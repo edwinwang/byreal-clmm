@@ -1,0 +1,16 @@
+[tool-chain]
+solana-version = "2.1.0"
+anchor_version = "0.31.0"
+
+[features]
+seeds = false
+
+[programs.localnet]
+amm_v3 = "CAMMCzo5YL8w4VFF8KVHrK22GGUsp5VTaW7grrKgrWqK"
+
+[registry]
+url = "https://github.com/raydium-io/raydium-amm-v3"
+
+[provider]
+cluster = "localnet"
+wallet = "~/.config/solana/id.json"
