@@ -49,16 +49,16 @@ pub struct CollectFundFee<'info> {
     /// The address that receives the collected token_0 protocol fees
     #[account(
         mut,
-        token::mint = vault_0_mint,
-        token::authority = admin_group.fee_keeper,
+        associated_token::mint = vault_0_mint,
+        associated_token::authority = admin_group.fee_keeper,
     )]
     pub recipient_token_account_0: Box<InterfaceAccount<'info, TokenAccount>>,
 
     /// The address that receives the collected token_1 protocol fees
     #[account(
         mut,
-        token::mint = vault_1_mint,
-        token::authority = admin_group.fee_keeper,
+        associated_token::mint = vault_1_mint,
+        associated_token::authority = admin_group.fee_keeper,
     )]
     pub recipient_token_account_1: Box<InterfaceAccount<'info, TokenAccount>>,
 
@@ -67,6 +67,8 @@ pub struct CollectFundFee<'info> {
 
     /// The SPL program 2022 to perform token transfers
     pub token_program_2022: Program<'info, Token2022>,
+
+    pub associated_token_program: Program<'info, anchor_spl::associated_token::AssociatedToken>,
 }
 
 pub fn collect_fund_fee(

@@ -25,6 +25,10 @@ pub struct ClaimOffchainRewardAccounts<'info> {
     )]
     pub admin_group: Account<'info, AmmAdminGroup>,
 
+    /// the pool id, which is the pool state account.
+    /// CHECK: only used to derive the reward config account.
+    pub pool_id: UncheckedAccount<'info>,
+
     #[account(
         mint::token_program = token_program
     )]
@@ -33,9 +37,9 @@ pub struct ClaimOffchainRewardAccounts<'info> {
     ///
     #[account(
         mut,
-        associated_token::mint = token_mint,
-        associated_token::authority = claimer,
-        associated_token::token_program = token_program,
+        token::mint = token_mint,
+        token::authority = claimer,
+        token::token_program = token_program,
     )]
     pub claimer_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
 
@@ -45,9 +49,17 @@ pub struct ClaimOffchainRewardAccounts<'info> {
         associated_token::authority = reward_config,
         associated_token::token_program = token_program,
     )]
-    pub reward_vault_account: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub reward_vault_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
 
     /// The offchain reward config account, it also is the reward vault account.
+    #[account(
+        seeds = [
+            OFFCHAIN_REWARD_SEED.as_bytes(),
+            pool_id.key().as_ref(),
+        ],
+        bump,
+        has_one = pool_id
+    )]
     pub reward_config: Box<Account<'info, OffchainRewardConfig>>,
 
     /// Spl token program or token program 2022
@@ -85,7 +97,7 @@ pub fn claim_offchain_reward(ctx: Context<ClaimOffchainRewardAccounts>, amount: 
 
     let cpi_accounts = token_interface::TransferChecked {
         to: ctx.accounts.claimer_token_account.to_account_info(),
-        from: ctx.accounts.reward_vault_account.to_account_info(),
+        from: ctx.accounts.reward_vault_token_account.to_account_info(),
         mint: ctx.accounts.token_mint.to_account_info(),
         authority: ctx.accounts.reward_config.to_account_info(),
     };

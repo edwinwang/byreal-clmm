@@ -2,7 +2,7 @@ use crate::error::ErrorCode;
 use crate::states::*;
 use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{self, Mint, TokenAccount, TokenInterface};
-use std::ops::{Deref, DerefMut};
+use std::ops::DerefMut;
 
 #[derive(Accounts)]
 pub struct WithdrawOffchainRewardAccounts<'info> {
@@ -20,6 +20,10 @@ pub struct WithdrawOffchainRewardAccounts<'info> {
         bump,
     )]
     pub admin_group: Account<'info, AmmAdminGroup>,
+
+    /// the pool id, which is the pool state account.
+    /// CHECK: only used to derive the reward config account.
+    pub pool_id: UncheckedAccount<'info>,
 
     #[account(
         mint::token_program = token_program
@@ -40,10 +44,18 @@ pub struct WithdrawOffchainRewardAccounts<'info> {
         associated_token::authority = reward_config,
         associated_token::token_program = token_program,
     )]
-    pub reward_vault_account: Box<InterfaceAccount<'info, TokenAccount>>,
+    pub reward_vault_token_account: Box<InterfaceAccount<'info, TokenAccount>>,
 
     /// The offchain reward config account, it also is the reward vault account.
-    #[account(mut)]
+    #[account(
+        mut,
+        seeds = [
+            OFFCHAIN_REWARD_SEED.as_bytes(),
+            pool_id.key().as_ref(),
+        ],
+        bump,
+        has_one = pool_id
+    )]
     pub reward_config: Box<Account<'info, OffchainRewardConfig>>,
 
     /// Spl token program or token program 2022
@@ -63,7 +75,7 @@ pub fn withdraw_offchain_reward(
         ErrorCode::IllegalAccountOwner
     );
 
-    let reward_account_info = ctx.accounts.reward_vault_account.to_account_info();
+    let reward_config_account_info = ctx.accounts.reward_config.to_account_info();
     let reward_config = ctx.accounts.reward_config.deref_mut();
 
     require_keys_eq!(
@@ -80,11 +92,11 @@ pub fn withdraw_offchain_reward(
     }
 
     // make sure amount is enough
-    let amount = if amount > ctx.accounts.reward_vault_account.amount {
+    let amount = if amount > ctx.accounts.reward_vault_token_account.amount {
         // if we withdraw all the remaining amount, we also remove the mint from the config
         reward_config.remove_reward_mint(ctx.accounts.token_mint.key())?;
         // if the amount is larger than the vault, we withdraw all the remaining amount
-        ctx.accounts.reward_vault_account.amount
+        ctx.accounts.reward_vault_token_account.amount
     } else {
         amount
     };
@@ -96,9 +108,9 @@ pub fn withdraw_offchain_reward(
 
     let cpi_accounts = token_interface::TransferChecked {
         to: ctx.accounts.receiver_token_account.to_account_info(),
-        from: ctx.accounts.reward_vault_account.to_account_info(),
+        from: ctx.accounts.reward_vault_token_account.to_account_info(),
         mint: ctx.accounts.token_mint.to_account_info(),
-        authority: reward_account_info,
+        authority: reward_config_account_info,
     };
 
     token_interface::transfer_checked(
