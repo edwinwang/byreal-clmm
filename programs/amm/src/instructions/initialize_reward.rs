@@ -161,6 +161,7 @@ pub fn initialize_reward(
         ctx.accounts.reward_token_mint.freeze_authority,
         &ctx.accounts.reward_token_vault.key(),
         &ctx.accounts.reward_funder.key(),
+        ctx.accounts.reward_funder.key() == ctx.accounts.admin_group.reward_config_manager,
         &operation_state,
     )?;
 

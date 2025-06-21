@@ -92,7 +92,7 @@ pub fn withdraw_offchain_reward(
     }
 
     // make sure amount is enough
-    let amount = if amount > ctx.accounts.reward_vault_token_account.amount {
+    let amount = if amount >= ctx.accounts.reward_vault_token_account.amount {
         // if we withdraw all the remaining amount, we also remove the mint from the config
         reward_config.remove_reward_mint(ctx.accounts.token_mint.key())?;
         // if the amount is larger than the vault, we withdraw all the remaining amount

@@ -3,7 +3,7 @@ use std::ops::DerefMut;
 use crate::error::ErrorCode;
 use crate::states::*;
 use crate::{libraries::tick_math, util};
-use anchor_lang::{prelude::*, solana_program};
+use anchor_lang::prelude::*;
 use anchor_spl::token_interface::{Mint, TokenAccount, TokenInterface};
 // use solana_program::{program::invoke_signed, system_instruction};
 #[derive(Accounts)]

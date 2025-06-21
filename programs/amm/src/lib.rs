@@ -17,7 +17,7 @@ solana_security_txt::security_txt! {
     policy: "",
     source_code: "https://github.com/byreal-git/byreal-clmm",
     preferred_languages: "en",
-    auditors: ""
+    auditors: "byreal"
 }
 
 #[cfg(feature = "devnet")]
@@ -27,10 +27,14 @@ declare_id!("45iBNkaENereLKMjLm2LHkF3hpDapf6mnvrM5HWFg9cY");
 
 pub mod admin {
     use super::{pubkey, Pubkey};
+    // TODO: !!! Need to modify for mainnet later !!!
+    // 9ZG4mYtayKedcDkRbpGAc13uQDT2Ag9twJBbuwia9Lqg 主网-多签
+    // F7sS8YTr47ta16jmT3R48omZPtuNMtkwV65LpGPYEn6M 主网-单签（li.chen)
+    // H7aHbBP9TiQGmbHDpGzQB2ahZc6LNeYuN1ddhZ5HV8PB local-单签
     #[cfg(feature = "devnet")]
-    pub const ID: Pubkey = pubkey!("H7aHbBP9TiQGmbHDpGzQB2ahZc6LNeYuN1ddhZ5HV8PB");
+    pub const ID: Pubkey = pubkey!("F7sS8YTr47ta16jmT3R48omZPtuNMtkwV65LpGPYEn6M");
     #[cfg(not(feature = "devnet"))]
-    pub const ID: Pubkey = pubkey!("H7aHbBP9TiQGmbHDpGzQB2ahZc6LNeYuN1ddhZ5HV8PB");
+    pub const ID: Pubkey = pubkey!("F7sS8YTr47ta16jmT3R48omZPtuNMtkwV65LpGPYEn6M");
 }
 
 #[program]

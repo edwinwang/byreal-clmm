@@ -246,6 +246,7 @@ impl PoolState {
         token_mint_freeze_authority: COption<Pubkey>,
         token_vault: &Pubkey,
         authority: &Pubkey,
+        authority_is_reward_manager: bool,
         operation_state: &OperationState,
     ) -> Result<()> {
         let reward_infos = self.reward_infos;
@@ -308,8 +309,7 @@ impl PoolState {
         } else if lowest_index == REWARD_NUM - 1 {
             // the last reward token must be controled by the admin
             require!(
-                *authority == crate::admin::ID
-                    || operation_state.validate_operation_owner(*authority),
+                authority_is_reward_manager || operation_state.validate_operation_owner(*authority),
                 ErrorCode::NotApproved
             );
         }
@@ -1041,6 +1041,7 @@ pub mod pool_test {
                     COption::None,
                     &Pubkey::default(),
                     &Pubkey::default(),
+                    false,
                     &operation_state,
                 )
                 .unwrap();
