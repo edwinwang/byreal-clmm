@@ -21,20 +21,19 @@ solana_security_txt::security_txt! {
 }
 
 #[cfg(feature = "devnet")]
-declare_id!("devi51mZmdwUJGU9hjN27vEz64Gps7uUefqxg27EAtH");
-#[cfg(not(feature = "devnet"))]
 declare_id!("45iBNkaENereLKMjLm2LHkF3hpDapf6mnvrM5HWFg9cY");
+#[cfg(not(feature = "devnet"))]
+declare_id!("REALQqNEomY6cQGZJUGwywTBD2UmDT32rZcNnfxQ5N2");
 
 pub mod admin {
     use super::{pubkey, Pubkey};
     // TODO: !!! Need to modify for mainnet later !!!
-    // 9ZG4mYtayKedcDkRbpGAc13uQDT2Ag9twJBbuwia9Lqg 主网-多签
-    // F7sS8YTr47ta16jmT3R48omZPtuNMtkwV65LpGPYEn6M 主网-单签（li.chen)
-    // H7aHbBP9TiQGmbHDpGzQB2ahZc6LNeYuN1ddhZ5HV8PB local-单签
+    // 9ZG4mYtayKedcDkRbpGAc13uQDT2Ag9twJBbuwia9Lqg devnet-multisig
+    // 9ZG4mYtayKedcDkRbpGAc13uQDT2Ag9twJBbuwia9Lqg mainnet-multisig
     #[cfg(feature = "devnet")]
-    pub const ID: Pubkey = pubkey!("F7sS8YTr47ta16jmT3R48omZPtuNMtkwV65LpGPYEn6M");
+    pub const ID: Pubkey = pubkey!("9ZG4mYtayKedcDkRbpGAc13uQDT2Ag9twJBbuwia9Lqg");
     #[cfg(not(feature = "devnet"))]
-    pub const ID: Pubkey = pubkey!("F7sS8YTr47ta16jmT3R48omZPtuNMtkwV65LpGPYEn6M");
+    pub const ID: Pubkey = pubkey!("AY196f8U5EvM999PVnvLmyvaUnzL4GLiFaGKUgnJXN6o");
 }
 
 #[program]

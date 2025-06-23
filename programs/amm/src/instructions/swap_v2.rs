@@ -12,7 +12,7 @@ use anchor_spl::token::Token;
 use anchor_spl::token_interface::{Mint, Token2022, TokenAccount};
 
 /// Memo msg for swap
-pub const SWAP_MEMO_MSG: &'static [u8] = b"raydium_swap";
+pub const SWAP_MEMO_MSG: &'static [u8] = b"byreal_swap";
 #[derive(Accounts)]
 pub struct SwapSingleV2<'info> {
     /// The user performing the swap
