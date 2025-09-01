@@ -85,7 +85,7 @@ impl OffchainRewardConfig {
             account_size_to_fit_members,
         );
         // Reallocate more space.
-        AccountInfo::realloc(&reward_config, new_size, false)?;
+        AccountInfo::resize(&reward_config, new_size)?;
 
         // If more lamports are needed, transfer them to the account.
         let rent_exempt_lamports = Rent::get().unwrap().minimum_balance(new_size).max(1);

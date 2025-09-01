@@ -20,19 +20,24 @@ solana_security_txt::security_txt! {
     auditors: "byreal"
 }
 
+#[cfg(feature = "localnet")]
+declare_id!("45iBNkaENereLKMjLm2LHkF3hpDapf6mnvrM5HWFg9cY");
 #[cfg(feature = "devnet")]
 declare_id!("45iBNkaENereLKMjLm2LHkF3hpDapf6mnvrM5HWFg9cY");
-#[cfg(not(feature = "devnet"))]
+
+#[cfg(all(not(feature = "localnet"), not(feature = "devnet")))]
 declare_id!("REALQqNEomY6cQGZJUGwywTBD2UmDT32rZcNnfxQ5N2");
 
 pub mod admin {
     use super::{pubkey, Pubkey};
-    // TODO: !!! Need to modify for mainnet later !!!
+    // Fh3a8NURkS4ihZjbsMvtFB4T2GGqs4FgLXSVw6nMexRN localnet-eoa-sig
     // 9ZG4mYtayKedcDkRbpGAc13uQDT2Ag9twJBbuwia9Lqg devnet-multisig
-    // 9ZG4mYtayKedcDkRbpGAc13uQDT2Ag9twJBbuwia9Lqg mainnet-multisig
+    // AY196f8U5EvM999PVnvLmyvaUnzL4GLiFaGKUgnJXN6o mainnet-multisig
+    #[cfg(feature = "localnet")]
+    pub const ID: Pubkey = pubkey!("Fh3a8NURkS4ihZjbsMvtFB4T2GGqs4FgLXSVw6nMexRN");
     #[cfg(feature = "devnet")]
     pub const ID: Pubkey = pubkey!("9ZG4mYtayKedcDkRbpGAc13uQDT2Ag9twJBbuwia9Lqg");
-    #[cfg(not(feature = "devnet"))]
+    #[cfg(all(not(feature = "localnet"), not(feature = "devnet")))]
     pub const ID: Pubkey = pubkey!("AY196f8U5EvM999PVnvLmyvaUnzL4GLiFaGKUgnJXN6o");
 }
 
