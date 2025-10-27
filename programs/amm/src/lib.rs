@@ -26,7 +26,7 @@ declare_id!("45iBNkaENereLKMjLm2LHkF3hpDapf6mnvrM5HWFg9cY");
 declare_id!("45iBNkaENereLKMjLm2LHkF3hpDapf6mnvrM5HWFg9cY");
 
 #[cfg(all(not(feature = "localnet"), not(feature = "devnet")))]
-declare_id!("REALQqNEomY6cQGZJUGwywTBD2UmDT32rZcNnfxQ5N2");
+declare_id!("HpNfyc2Saw7RKkQd8nEL4khUcuPhQ7WwY1B2qjx8jxFq");
 
 pub mod admin {
     use super::{pubkey, Pubkey};

@@ -1,197 +1,12 @@
 {
-  "address": "REALQqNEomY6cQGZJUGwywTBD2UmDT32rZcNnfxQ5N2",
+  "address": "HpNfyc2Saw7RKkQd8nEL4khUcuPhQ7WwY1B2qjx8jxFq",
   "metadata": {
-    "name": "byreal_clmm",
+    "name": "amm_v3",
     "version": "0.1.0",
     "spec": "0.1.0",
-    "description": "Anchor client and source for Byreal concentrated liquidity AMM"
+    "description": "Anchor client and source for Pancake concentrated liquidity AMM"
   },
   "instructions": [
-    {
-      "name": "claim_offchain_reward",
-      "docs": [
-        "claim offchain reward from the pool"
-      ],
-      "discriminator": [
-        195,
-        87,
-        221,
-        149,
-        141,
-        195,
-        146,
-        19
-      ],
-      "accounts": [
-        {
-          "name": "claimer",
-          "docs": [
-            "the address who claim the offchain reward."
-          ],
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "authority",
-          "docs": [
-            "The authority make decision that who can claim the offchain reward."
-          ],
-          "signer": true
-        },
-        {
-          "name": "admin_group",
-          "docs": [
-            "Initialize amm admin group account to store admin permissions."
-          ],
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  97,
-                  100,
-                  109,
-                  105,
-                  110,
-                  95,
-                  103,
-                  114,
-                  111,
-                  117,
-                  112
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "pool_id",
-          "docs": [
-            "the pool id, which is the pool state account."
-          ],
-          "relations": [
-            "reward_config"
-          ]
-        },
-        {
-          "name": "token_mint"
-        },
-        {
-          "name": "claimer_token_account",
-          "docs": [
-            ""
-          ],
-          "writable": true
-        },
-        {
-          "name": "reward_vault_token_account",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "account",
-                "path": "reward_config"
-              },
-              {
-                "kind": "account",
-                "path": "token_program"
-              },
-              {
-                "kind": "account",
-                "path": "token_mint"
-              }
-            ],
-            "program": {
-              "kind": "const",
-              "value": [
-                140,
-                151,
-                37,
-                143,
-                78,
-                36,
-                137,
-                241,
-                187,
-                61,
-                16,
-                41,
-                20,
-                142,
-                13,
-                131,
-                11,
-                90,
-                19,
-                153,
-                218,
-                255,
-                16,
-                132,
-                4,
-                142,
-                123,
-                216,
-                219,
-                233,
-                248,
-                89
-              ]
-            }
-          }
-        },
-        {
-          "name": "reward_config",
-          "docs": [
-            "The offchain reward config account, it also is the reward vault account."
-          ],
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  111,
-                  102,
-                  102,
-                  99,
-                  104,
-                  97,
-                  105,
-                  110,
-                  95,
-                  114,
-                  101,
-                  119,
-                  97,
-                  114,
-                  100
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "pool_id"
-              }
-            ]
-          }
-        },
-        {
-          "name": "token_program",
-          "docs": [
-            "Spl token program or token program 2022"
-          ]
-        },
-        {
-          "name": "associated_token_program",
-          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
-        }
-      ],
-      "args": [
-        {
-          "name": "amount",
-          "type": "u64"
-        }
-      ]
-    },
     {
       "name": "close_position",
       "docs": [
@@ -300,31 +115,11 @@
       ],
       "accounts": [
         {
-          "name": "admin_group",
+          "name": "owner",
           "docs": [
-            "amm admin group account to store admin permissions.",
-            "anyone can collect fee, but only fee-manager in admin group can receive fee"
+            "Only admin or fund_owner can collect fee now"
           ],
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  97,
-                  100,
-                  109,
-                  105,
-                  110,
-                  95,
-                  103,
-                  114,
-                  111,
-                  117,
-                  112
-                ]
-              }
-            ]
-          }
+          "signer": true
         },
         {
           "name": "pool_state",
@@ -332,6 +127,12 @@
             "Pool state stores accumulated protocol fee amount"
           ],
           "writable": true
+        },
+        {
+          "name": "amm_config",
+          "docs": [
+            "Amm config account stores fund_owner"
+          ]
         },
         {
           "name": "token_vault_0",
@@ -364,188 +165,14 @@
           "docs": [
             "The address that receives the collected token_0 protocol fees"
           ],
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "account",
-                "path": "admin_group.fee_keeper",
-                "account": "AmmAdminGroup"
-              },
-              {
-                "kind": "const",
-                "value": [
-                  6,
-                  221,
-                  246,
-                  225,
-                  215,
-                  101,
-                  161,
-                  147,
-                  217,
-                  203,
-                  225,
-                  70,
-                  206,
-                  235,
-                  121,
-                  172,
-                  28,
-                  180,
-                  133,
-                  237,
-                  95,
-                  91,
-                  55,
-                  145,
-                  58,
-                  140,
-                  245,
-                  133,
-                  126,
-                  255,
-                  0,
-                  169
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "vault_0_mint"
-              }
-            ],
-            "program": {
-              "kind": "const",
-              "value": [
-                140,
-                151,
-                37,
-                143,
-                78,
-                36,
-                137,
-                241,
-                187,
-                61,
-                16,
-                41,
-                20,
-                142,
-                13,
-                131,
-                11,
-                90,
-                19,
-                153,
-                218,
-                255,
-                16,
-                132,
-                4,
-                142,
-                123,
-                216,
-                219,
-                233,
-                248,
-                89
-              ]
-            }
-          }
+          "writable": true
         },
         {
           "name": "recipient_token_account_1",
           "docs": [
             "The address that receives the collected token_1 protocol fees"
           ],
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "account",
-                "path": "admin_group.fee_keeper",
-                "account": "AmmAdminGroup"
-              },
-              {
-                "kind": "const",
-                "value": [
-                  6,
-                  221,
-                  246,
-                  225,
-                  215,
-                  101,
-                  161,
-                  147,
-                  217,
-                  203,
-                  225,
-                  70,
-                  206,
-                  235,
-                  121,
-                  172,
-                  28,
-                  180,
-                  133,
-                  237,
-                  95,
-                  91,
-                  55,
-                  145,
-                  58,
-                  140,
-                  245,
-                  133,
-                  126,
-                  255,
-                  0,
-                  169
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "vault_1_mint"
-              }
-            ],
-            "program": {
-              "kind": "const",
-              "value": [
-                140,
-                151,
-                37,
-                143,
-                78,
-                36,
-                137,
-                241,
-                187,
-                61,
-                16,
-                41,
-                20,
-                142,
-                13,
-                131,
-                11,
-                90,
-                19,
-                153,
-                218,
-                255,
-                16,
-                132,
-                4,
-                142,
-                123,
-                216,
-                219,
-                233,
-                248,
-                89
-              ]
-            }
-          }
+          "writable": true
         },
         {
           "name": "token_program",
@@ -560,10 +187,6 @@
             "The SPL program 2022 to perform token transfers"
           ],
           "address": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-        },
-        {
-          "name": "associated_token_program",
-          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
         }
       ],
       "args": [
@@ -601,31 +224,11 @@
       ],
       "accounts": [
         {
-          "name": "admin_group",
+          "name": "owner",
           "docs": [
-            "amm admin group account to store admin permissions.",
-            "anyone can collect fee, but only fee-manager in admin group can receive fee"
+            "Only admin or config owner can collect fee now"
           ],
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  97,
-                  100,
-                  109,
-                  105,
-                  110,
-                  95,
-                  103,
-                  114,
-                  111,
-                  117,
-                  112
-                ]
-              }
-            ]
-          }
+          "signer": true
         },
         {
           "name": "pool_state",
@@ -633,6 +236,12 @@
             "Pool state stores accumulated protocol fee amount"
           ],
           "writable": true
+        },
+        {
+          "name": "amm_config",
+          "docs": [
+            "Amm config account stores owner"
+          ]
         },
         {
           "name": "token_vault_0",
@@ -665,188 +274,14 @@
           "docs": [
             "The address that receives the collected token_0 protocol fees"
           ],
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "account",
-                "path": "admin_group.fee_keeper",
-                "account": "AmmAdminGroup"
-              },
-              {
-                "kind": "const",
-                "value": [
-                  6,
-                  221,
-                  246,
-                  225,
-                  215,
-                  101,
-                  161,
-                  147,
-                  217,
-                  203,
-                  225,
-                  70,
-                  206,
-                  235,
-                  121,
-                  172,
-                  28,
-                  180,
-                  133,
-                  237,
-                  95,
-                  91,
-                  55,
-                  145,
-                  58,
-                  140,
-                  245,
-                  133,
-                  126,
-                  255,
-                  0,
-                  169
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "vault_0_mint"
-              }
-            ],
-            "program": {
-              "kind": "const",
-              "value": [
-                140,
-                151,
-                37,
-                143,
-                78,
-                36,
-                137,
-                241,
-                187,
-                61,
-                16,
-                41,
-                20,
-                142,
-                13,
-                131,
-                11,
-                90,
-                19,
-                153,
-                218,
-                255,
-                16,
-                132,
-                4,
-                142,
-                123,
-                216,
-                219,
-                233,
-                248,
-                89
-              ]
-            }
-          }
+          "writable": true
         },
         {
           "name": "recipient_token_account_1",
           "docs": [
             "The address that receives the collected token_1 protocol fees"
           ],
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "account",
-                "path": "admin_group.fee_keeper",
-                "account": "AmmAdminGroup"
-              },
-              {
-                "kind": "const",
-                "value": [
-                  6,
-                  221,
-                  246,
-                  225,
-                  215,
-                  101,
-                  161,
-                  147,
-                  217,
-                  203,
-                  225,
-                  70,
-                  206,
-                  235,
-                  121,
-                  172,
-                  28,
-                  180,
-                  133,
-                  237,
-                  95,
-                  91,
-                  55,
-                  145,
-                  58,
-                  140,
-                  245,
-                  133,
-                  126,
-                  255,
-                  0,
-                  169
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "vault_1_mint"
-              }
-            ],
-            "program": {
-              "kind": "const",
-              "value": [
-                140,
-                151,
-                37,
-                143,
-                78,
-                36,
-                137,
-                241,
-                187,
-                61,
-                16,
-                41,
-                20,
-                142,
-                13,
-                131,
-                11,
-                90,
-                19,
-                153,
-                218,
-                255,
-                16,
-                132,
-                4,
-                142,
-                123,
-                216,
-                219,
-                233,
-                248,
-                89
-              ]
-            }
-          }
+          "writable": true
         },
         {
           "name": "token_program",
@@ -861,10 +296,6 @@
             "The SPL program 2022 to perform token transfers"
           ],
           "address": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
-        },
-        {
-          "name": "associated_token_program",
-          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
         }
       ],
       "args": [
@@ -906,32 +337,6 @@
             "The founder who init reward info previously"
           ],
           "signer": true
-        },
-        {
-          "name": "admin_group",
-          "docs": [
-            "amm admin group account to store admin permissions."
-          ],
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  97,
-                  100,
-                  109,
-                  105,
-                  110,
-                  95,
-                  103,
-                  114,
-                  111,
-                  117,
-                  112
-                ]
-              }
-            ]
-          }
         },
         {
           "name": "funder_token_account",
@@ -1012,36 +417,11 @@
         {
           "name": "owner",
           "docs": [
-            "Address to be set as normal manager in admin group."
+            "Address to be set as protocol owner."
           ],
           "writable": true,
-          "signer": true
-        },
-        {
-          "name": "admin_group",
-          "docs": [
-            "amm admin group account to store admin permissions."
-          ],
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  97,
-                  100,
-                  109,
-                  105,
-                  110,
-                  95,
-                  103,
-                  114,
-                  111,
-                  117,
-                  112
-                ]
-              }
-            ]
-          }
+          "signer": true,
+          "address": "DmwXqqK5Zuj619au6q2Jx3TMr9ZV1837uxJcEwyvXVtV"
         },
         {
           "name": "amm_config",
@@ -1128,33 +508,8 @@
             "Address to be set as operation account owner."
           ],
           "writable": true,
-          "signer": true
-        },
-        {
-          "name": "admin_group",
-          "docs": [
-            "amm admin group account to store admin permissions."
-          ],
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  97,
-                  100,
-                  109,
-                  105,
-                  110,
-                  95,
-                  103,
-                  114,
-                  111,
-                  117,
-                  112
-                ]
-              }
-            ]
-          }
+          "signer": true,
+          "address": "DmwXqqK5Zuj619au6q2Jx3TMr9ZV1837uxJcEwyvXVtV"
         },
         {
           "name": "operation_state",
@@ -1176,6 +531,79 @@
                   105,
                   111,
                   110
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": []
+    },
+    {
+      "name": "create_permissionless_farm_switch",
+      "docs": [
+        "Creates a permissionless farm switch account for the program",
+        "",
+        "# Arguments",
+        "",
+        "* `ctx`- The context of accounts",
+        ""
+      ],
+      "discriminator": [
+        88,
+        242,
+        198,
+        70,
+        241,
+        6,
+        196,
+        251
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true,
+          "address": "DmwXqqK5Zuj619au6q2Jx3TMr9ZV1837uxJcEwyvXVtV"
+        },
+        {
+          "name": "permissionless_farm_switch",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  109,
+                  105,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  108,
+                  101,
+                  115,
+                  115,
+                  95,
+                  102,
+                  97,
+                  114,
+                  109,
+                  95,
+                  115,
+                  119,
+                  105,
+                  116,
+                  99,
+                  104
                 ]
               }
             ]
@@ -1219,39 +647,6 @@
           "signer": true
         },
         {
-          "name": "pool_manager",
-          "docs": [
-            "with pool_manager permission, the pool creator can create a pool."
-          ],
-          "signer": true
-        },
-        {
-          "name": "admin_group",
-          "docs": [
-            "amm admin group account to store admin permissions."
-          ],
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  97,
-                  100,
-                  109,
-                  105,
-                  110,
-                  95,
-                  103,
-                  114,
-                  111,
-                  117,
-                  112
-                ]
-              }
-            ]
-          }
-        },
-        {
           "name": "amm_config",
           "docs": [
             "Which config the pool belongs to."
@@ -1285,41 +680,6 @@
               {
                 "kind": "account",
                 "path": "token_mint_1"
-              }
-            ]
-          }
-        },
-        {
-          "name": "offchain_reward_config",
-          "docs": [
-            "Initialize an account to store the off-chain reward config"
-          ],
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  111,
-                  102,
-                  102,
-                  99,
-                  104,
-                  97,
-                  105,
-                  110,
-                  95,
-                  114,
-                  101,
-                  119,
-                  97,
-                  114,
-                  100
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "pool_state"
               }
             ]
           }
@@ -1547,33 +907,8 @@
             "Address to be set as protocol owner."
           ],
           "writable": true,
-          "signer": true
-        },
-        {
-          "name": "admin_group",
-          "docs": [
-            "amm admin group account to store admin permissions."
-          ],
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  97,
-                  100,
-                  109,
-                  105,
-                  110,
-                  95,
-                  103,
-                  114,
-                  111,
-                  117,
-                  112
-                ]
-              }
-            ]
-          }
+          "signer": true,
+          "address": "DmwXqqK5Zuj619au6q2Jx3TMr9ZV1837uxJcEwyvXVtV"
         },
         {
           "name": "token_mint",
@@ -1944,196 +1279,6 @@
       ]
     },
     {
-      "name": "deposit_offchain_reward",
-      "docs": [
-        "deposit offchain reward into the pool"
-      ],
-      "discriminator": [
-        97,
-        125,
-        48,
-        169,
-        92,
-        241,
-        44,
-        142
-      ],
-      "accounts": [
-        {
-          "name": "payer",
-          "docs": [
-            "the address paying to deposit the offchain reward."
-          ],
-          "writable": true,
-          "signer": true
-        },
-        {
-          "name": "authority",
-          "docs": [
-            "The authority make decision that who can deposit the offchain reward."
-          ],
-          "signer": true
-        },
-        {
-          "name": "admin_group",
-          "docs": [
-            "Initialize amm admin group account to store admin permissions."
-          ],
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  97,
-                  100,
-                  109,
-                  105,
-                  110,
-                  95,
-                  103,
-                  114,
-                  111,
-                  117,
-                  112
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "pool_id",
-          "docs": [
-            "the pool id, which is the pool state account."
-          ],
-          "relations": [
-            "reward_config"
-          ]
-        },
-        {
-          "name": "token_mint"
-        },
-        {
-          "name": "payer_token_account",
-          "docs": [
-            ""
-          ],
-          "writable": true
-        },
-        {
-          "name": "reward_vault_token_account",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "account",
-                "path": "reward_config"
-              },
-              {
-                "kind": "account",
-                "path": "token_program"
-              },
-              {
-                "kind": "account",
-                "path": "token_mint"
-              }
-            ],
-            "program": {
-              "kind": "const",
-              "value": [
-                140,
-                151,
-                37,
-                143,
-                78,
-                36,
-                137,
-                241,
-                187,
-                61,
-                16,
-                41,
-                20,
-                142,
-                13,
-                131,
-                11,
-                90,
-                19,
-                153,
-                218,
-                255,
-                16,
-                132,
-                4,
-                142,
-                123,
-                216,
-                219,
-                233,
-                248,
-                89
-              ]
-            }
-          }
-        },
-        {
-          "name": "reward_config",
-          "docs": [
-            "The offchain reward config account, it also is the reward vault account."
-          ],
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  111,
-                  102,
-                  102,
-                  99,
-                  104,
-                  97,
-                  105,
-                  110,
-                  95,
-                  114,
-                  101,
-                  119,
-                  97,
-                  114,
-                  100
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "pool_id"
-              }
-            ]
-          }
-        },
-        {
-          "name": "token_program",
-          "docs": [
-            "Spl token program or token program 2022"
-          ]
-        },
-        {
-          "name": "associated_token_program",
-          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
-        },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": [
-        {
-          "name": "amount",
-          "type": "u64"
-        }
-      ]
-    },
-    {
       "name": "increase_liquidity",
       "docs": [
         "#[deprecated(note = \"Use `increase_liquidity_v2` instead.\")]",
@@ -2457,74 +1602,6 @@
       ]
     },
     {
-      "name": "init_amm_admin_group",
-      "docs": [
-        "Initialize the AMM admin group account, which is used to manage the AMM protocol."
-      ],
-      "discriminator": [
-        209,
-        108,
-        32,
-        246,
-        157,
-        214,
-        237,
-        86
-      ],
-      "accounts": [
-        {
-          "name": "payer",
-          "docs": [
-            "only super admin can create admin group"
-          ],
-          "writable": true,
-          "signer": true,
-          "address": "AY196f8U5EvM999PVnvLmyvaUnzL4GLiFaGKUgnJXN6o"
-        },
-        {
-          "name": "admin_group",
-          "docs": [
-            "Initialize amm admin group account to store admin permissions."
-          ],
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  97,
-                  100,
-                  109,
-                  105,
-                  110,
-                  95,
-                  103,
-                  114,
-                  111,
-                  117,
-                  112
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "system_program",
-          "address": "11111111111111111111111111111111"
-        }
-      ],
-      "args": [
-        {
-          "name": "params",
-          "type": {
-            "defined": {
-              "name": "InitAdminGroupParams"
-            }
-          }
-        }
-      ]
-    },
-    {
       "name": "initialize_reward",
       "docs": [
         "Initialize a reward info for a given pool and reward index",
@@ -2556,32 +1633,6 @@
           ],
           "writable": true,
           "signer": true
-        },
-        {
-          "name": "admin_group",
-          "docs": [
-            "amm admin group account to store admin permissions."
-          ],
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  97,
-                  100,
-                  109,
-                  105,
-                  110,
-                  95,
-                  103,
-                  114,
-                  111,
-                  117,
-                  112
-                ]
-              }
-            ]
-          }
         },
         {
           "name": "funder_token_account",
@@ -2619,6 +1670,44 @@
                   105,
                   111,
                   110
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "permissionless_farm_switch",
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  109,
+                  105,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  108,
+                  101,
+                  115,
+                  115,
+                  95,
+                  102,
+                  97,
+                  114,
+                  109,
+                  95,
+                  115,
+                  119,
+                  105,
+                  116,
+                  99,
+                  104
                 ]
               }
             ]
@@ -3815,32 +2904,6 @@
           "signer": true
         },
         {
-          "name": "admin_group",
-          "docs": [
-            "amm admin group account to store admin permissions."
-          ],
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  97,
-                  100,
-                  109,
-                  105,
-                  110,
-                  95,
-                  103,
-                  114,
-                  111,
-                  117,
-                  112
-                ]
-              }
-            ]
-          }
-        },
-        {
           "name": "amm_config"
         },
         {
@@ -4018,6 +3081,83 @@
       ]
     },
     {
+      "name": "swap_router_base_in",
+      "docs": [
+        "Swap token for as much as possible of another token across the path provided, base input",
+        "",
+        "# Arguments",
+        "",
+        "* `ctx` - The context of accounts",
+        "* `amount_in` - Token amount to be swapped in",
+        "* `amount_out_minimum` - Panic if output amount is below minimum amount. For slippage.",
+        ""
+      ],
+      "discriminator": [
+        69,
+        125,
+        115,
+        218,
+        245,
+        186,
+        242,
+        196
+      ],
+      "accounts": [
+        {
+          "name": "payer",
+          "docs": [
+            "The user performing the swap"
+          ],
+          "signer": true
+        },
+        {
+          "name": "input_token_account",
+          "docs": [
+            "The token account that pays input tokens for the swap"
+          ],
+          "writable": true
+        },
+        {
+          "name": "input_token_mint",
+          "docs": [
+            "The mint of input token"
+          ],
+          "writable": true
+        },
+        {
+          "name": "token_program",
+          "docs": [
+            "SPL program for token transfers"
+          ],
+          "address": "TokenkegQfeZyiNwAJbNbGKPFXCWuBvf9Ss623VQ5DA"
+        },
+        {
+          "name": "token_program_2022",
+          "docs": [
+            "SPL program 2022 for token transfers"
+          ],
+          "address": "TokenzQdBNbLqP5VEhdkAS6EPFLC1PHnBqCXEpPxuEb"
+        },
+        {
+          "name": "memo_program",
+          "docs": [
+            "Memo program"
+          ],
+          "address": "MemoSq4gqABAXKb96qnH8TysNcWxMyWCqXgDLGmfcHr"
+        }
+      ],
+      "args": [
+        {
+          "name": "amount_in",
+          "type": "u64"
+        },
+        {
+          "name": "amount_out_minimum",
+          "type": "u64"
+        }
+      ]
+    },
+    {
       "name": "swap_v2",
       "docs": [
         "Swaps one token for as much as possible of another token across a single pool, support token program 2022",
@@ -4151,6 +3291,85 @@
       ]
     },
     {
+      "name": "toggle_permissionless_farm_switch",
+      "docs": [
+        "Toggle the permissionless farm switch account",
+        "",
+        "# Arguments",
+        "",
+        "* `ctx`- The context of accounts",
+        "* `is_on`- Is the permissionless farm allowed or not",
+        ""
+      ],
+      "discriminator": [
+        150,
+        112,
+        54,
+        233,
+        238,
+        161,
+        7,
+        86
+      ],
+      "accounts": [
+        {
+          "name": "owner",
+          "writable": true,
+          "signer": true,
+          "address": "DmwXqqK5Zuj619au6q2Jx3TMr9ZV1837uxJcEwyvXVtV"
+        },
+        {
+          "name": "permissionless_farm_switch",
+          "writable": true,
+          "pda": {
+            "seeds": [
+              {
+                "kind": "const",
+                "value": [
+                  112,
+                  101,
+                  114,
+                  109,
+                  105,
+                  115,
+                  115,
+                  105,
+                  111,
+                  110,
+                  108,
+                  101,
+                  115,
+                  115,
+                  95,
+                  102,
+                  97,
+                  114,
+                  109,
+                  95,
+                  115,
+                  119,
+                  105,
+                  116,
+                  99,
+                  104
+                ]
+              }
+            ]
+          }
+        },
+        {
+          "name": "system_program",
+          "address": "11111111111111111111111111111111"
+        }
+      ],
+      "args": [
+        {
+          "name": "is_on",
+          "type": "bool"
+        }
+      ]
+    },
+    {
       "name": "transfer_reward_owner",
       "docs": [
         "Transfer reward owner",
@@ -4177,33 +3396,8 @@
           "docs": [
             "Address to be set as operation account owner."
           ],
-          "signer": true
-        },
-        {
-          "name": "admin_group",
-          "docs": [
-            "amm admin group account to store admin permissions."
-          ],
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  97,
-                  100,
-                  109,
-                  105,
-                  110,
-                  95,
-                  103,
-                  114,
-                  111,
-                  117,
-                  112
-                ]
-              }
-            ]
-          }
+          "signer": true,
+          "address": "DmwXqqK5Zuj619au6q2Jx3TMr9ZV1837uxJcEwyvXVtV"
         },
         {
           "name": "pool_state",
@@ -4214,70 +3408,6 @@
         {
           "name": "new_owner",
           "type": "pubkey"
-        }
-      ]
-    },
-    {
-      "name": "update_amm_admin_group",
-      "docs": [
-        "Update the AMM admin group account, which is used to manage the AMM protocol."
-      ],
-      "discriminator": [
-        61,
-        183,
-        185,
-        188,
-        82,
-        81,
-        141,
-        197
-      ],
-      "accounts": [
-        {
-          "name": "payer",
-          "docs": [
-            "only super admin can create admin group"
-          ],
-          "writable": true,
-          "signer": true,
-          "address": "AY196f8U5EvM999PVnvLmyvaUnzL4GLiFaGKUgnJXN6o"
-        },
-        {
-          "name": "admin_group",
-          "docs": [
-            "update amm admin group account to store admin permissions."
-          ],
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  97,
-                  100,
-                  109,
-                  105,
-                  110,
-                  95,
-                  103,
-                  114,
-                  111,
-                  117,
-                  112
-                ]
-              }
-            ]
-          }
-        }
-      ],
-      "args": [
-        {
-          "name": "params",
-          "type": {
-            "defined": {
-              "name": "UpdateAdminGroupParams"
-            }
-          }
         }
       ]
     },
@@ -4314,33 +3444,8 @@
           "docs": [
             "The amm config owner or admin"
           ],
-          "signer": true
-        },
-        {
-          "name": "admin_group",
-          "docs": [
-            "amm admin group account to store admin permissions."
-          ],
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  97,
-                  100,
-                  109,
-                  105,
-                  110,
-                  95,
-                  103,
-                  114,
-                  111,
-                  117,
-                  112
-                ]
-              }
-            ]
-          }
+          "signer": true,
+          "address": "DmwXqqK5Zuj619au6q2Jx3TMr9ZV1837uxJcEwyvXVtV"
         },
         {
           "name": "amm_config",
@@ -4392,33 +3497,8 @@
           "docs": [
             "Address to be set as operation account owner."
           ],
-          "signer": true
-        },
-        {
-          "name": "admin_group",
-          "docs": [
-            "amm admin group account to store admin permissions."
-          ],
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  97,
-                  100,
-                  109,
-                  105,
-                  110,
-                  95,
-                  103,
-                  114,
-                  111,
-                  117,
-                  112
-                ]
-              }
-            ]
-          }
+          "signer": true,
+          "address": "DmwXqqK5Zuj619au6q2Jx3TMr9ZV1837uxJcEwyvXVtV"
         },
         {
           "name": "operation_state",
@@ -4487,33 +3567,8 @@
       "accounts": [
         {
           "name": "authority",
-          "signer": true
-        },
-        {
-          "name": "admin_group",
-          "docs": [
-            "amm admin group account to store admin permissions."
-          ],
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  97,
-                  100,
-                  109,
-                  105,
-                  110,
-                  95,
-                  103,
-                  114,
-                  111,
-                  117,
-                  112
-                ]
-              }
-            ]
-          }
+          "signer": true,
+          "address": "DmwXqqK5Zuj619au6q2Jx3TMr9ZV1837uxJcEwyvXVtV"
         },
         {
           "name": "pool_state",
@@ -4557,200 +3612,9 @@
         }
       ],
       "args": []
-    },
-    {
-      "name": "withdraw_offchain_reward",
-      "docs": [
-        "withdraw offchain reward from the pool"
-      ],
-      "discriminator": [
-        86,
-        53,
-        59,
-        76,
-        217,
-        38,
-        71,
-        213
-      ],
-      "accounts": [
-        {
-          "name": "authority",
-          "docs": [
-            "The authority make decision that who can withdraw the offchain reward."
-          ],
-          "signer": true
-        },
-        {
-          "name": "admin_group",
-          "docs": [
-            "Initialize amm admin group account to store admin permissions."
-          ],
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  97,
-                  100,
-                  109,
-                  105,
-                  110,
-                  95,
-                  103,
-                  114,
-                  111,
-                  117,
-                  112
-                ]
-              }
-            ]
-          }
-        },
-        {
-          "name": "pool_id",
-          "docs": [
-            "the pool id, which is the pool state account."
-          ],
-          "relations": [
-            "reward_config"
-          ]
-        },
-        {
-          "name": "token_mint"
-        },
-        {
-          "name": "receiver_token_account",
-          "docs": [
-            "the address who receive the withdrawn offchain reward."
-          ],
-          "writable": true
-        },
-        {
-          "name": "reward_vault_token_account",
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "account",
-                "path": "reward_config"
-              },
-              {
-                "kind": "account",
-                "path": "token_program"
-              },
-              {
-                "kind": "account",
-                "path": "token_mint"
-              }
-            ],
-            "program": {
-              "kind": "const",
-              "value": [
-                140,
-                151,
-                37,
-                143,
-                78,
-                36,
-                137,
-                241,
-                187,
-                61,
-                16,
-                41,
-                20,
-                142,
-                13,
-                131,
-                11,
-                90,
-                19,
-                153,
-                218,
-                255,
-                16,
-                132,
-                4,
-                142,
-                123,
-                216,
-                219,
-                233,
-                248,
-                89
-              ]
-            }
-          }
-        },
-        {
-          "name": "reward_config",
-          "docs": [
-            "The offchain reward config account, it also is the reward vault account."
-          ],
-          "writable": true,
-          "pda": {
-            "seeds": [
-              {
-                "kind": "const",
-                "value": [
-                  111,
-                  102,
-                  102,
-                  99,
-                  104,
-                  97,
-                  105,
-                  110,
-                  95,
-                  114,
-                  101,
-                  119,
-                  97,
-                  114,
-                  100
-                ]
-              },
-              {
-                "kind": "account",
-                "path": "pool_id"
-              }
-            ]
-          }
-        },
-        {
-          "name": "token_program",
-          "docs": [
-            "Spl token program or token program 2022"
-          ]
-        },
-        {
-          "name": "associated_token_program",
-          "address": "ATokenGPvbdGVxr1b2hvZbsiqW5xWH25efTNsLJA8knL"
-        }
-      ],
-      "args": [
-        {
-          "name": "amount",
-          "type": "u64"
-        }
-      ]
     }
   ],
   "accounts": [
-    {
-      "name": "AmmAdminGroup",
-      "discriminator": [
-        128,
-        128,
-        234,
-        30,
-        61,
-        172,
-        188,
-        123
-      ]
-    },
     {
       "name": "AmmConfig",
       "discriminator": [
@@ -4778,19 +3642,6 @@
       ]
     },
     {
-      "name": "OffchainRewardConfig",
-      "discriminator": [
-        118,
-        52,
-        115,
-        150,
-        99,
-        69,
-        164,
-        76
-      ]
-    },
-    {
       "name": "OperationState",
       "discriminator": [
         19,
@@ -4801,6 +3652,19 @@
         222,
         183,
         252
+      ]
+    },
+    {
+      "name": "PermissionlessFarmSwitch",
+      "discriminator": [
+        37,
+        92,
+        147,
+        78,
+        250,
+        100,
+        147,
+        137
       ]
     },
     {
@@ -4985,19 +3849,6 @@
         88,
         153,
         107
-      ]
-    },
-    {
-      "name": "ModifyAmmAdminGroupEvent",
-      "discriminator": [
-        218,
-        118,
-        87,
-        81,
-        53,
-        80,
-        18,
-        235
       ]
     },
     {
@@ -5265,89 +4116,9 @@
       "code": 6044,
       "name": "TransferFeeCalculateNotMatch",
       "msg": "TransferFee calculate not match"
-    },
-    {
-      "code": 6045,
-      "name": "IllegalAccountOwner",
-      "msg": "invalid account owner"
-    },
-    {
-      "code": 6046,
-      "name": "InvalidAccount",
-      "msg": "Invalid account"
     }
   ],
   "types": [
-    {
-      "name": "AmmAdminGroup",
-      "docs": [
-        "Holds the admin group information."
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "fee_keeper",
-            "docs": [
-              "the address who can hold the fee,",
-              "anyone can trigger the fee collection action,"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "reward_config_manager",
-            "docs": [
-              "the address who can config the reward(config, deposit, withdraw),",
-              "deposit reward, set the account who can deposit the reward, withdraw the remaining reward(withdraw)"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "reward_claim_manager",
-            "docs": [
-              "the address who can manage the offchain reward claim"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "pool_manager",
-            "docs": [
-              "the address who can manage the pool create action,",
-              "without this account's permission, no one can create a pool"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "emergency_manager",
-            "docs": [
-              "the address who can manage the emergency action,",
-              "emergency action includes stop/resume the pool, stop/resume withdraw lp"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "normal_manager",
-            "docs": [
-              "normal action manager,",
-              "such as create amm config, update amm config"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "pad",
-            "docs": [
-              "The space required for the account. may be used for future extensions."
-            ],
-            "type": {
-              "array": [
-                "pubkey",
-                6
-              ]
-            }
-          }
-        ]
-      }
-    },
     {
       "name": "AmmConfig",
       "docs": [
@@ -5764,61 +4535,6 @@
       }
     },
     {
-      "name": "InitAdminGroupParams",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "fee_keeper",
-            "docs": [
-              "the address who can hold the fee,",
-              "anyone can trigger the fee collection action,"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "reward_config_manager",
-            "docs": [
-              "the address who can config the reward(config, deposit, withdraw),",
-              "deposit reward, set the account who can deposit the reward, withdraw the remaining reward(withdraw)"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "reward_claim_manager",
-            "docs": [
-              "the address who can manage the offchain reward claim"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "pool_manager",
-            "docs": [
-              "the address who can manage the pool create action,",
-              "without this account's permission, no one can create a pool"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "emergency_manager",
-            "docs": [
-              "the address who can manage the emergency action,",
-              "emergency action includes stop/resume the pool, stop/resume withdraw lp"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "normal_manager",
-            "docs": [
-              "normal action manager,",
-              "such as create amm config, update amm config"
-            ],
-            "type": "pubkey"
-          }
-        ]
-      }
-    },
-    {
       "name": "InitializeRewardParam",
       "type": {
         "kind": "struct",
@@ -5972,38 +4688,6 @@
       }
     },
     {
-      "name": "ModifyAmmAdminGroupEvent",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "fee_keeper",
-            "type": "pubkey"
-          },
-          {
-            "name": "reward_config_manager",
-            "type": "pubkey"
-          },
-          {
-            "name": "reward_claim_manager",
-            "type": "pubkey"
-          },
-          {
-            "name": "pool_manager",
-            "type": "pubkey"
-          },
-          {
-            "name": "emergency_manager",
-            "type": "pubkey"
-          },
-          {
-            "name": "normal_manager",
-            "type": "pubkey"
-          }
-        ]
-      }
-    },
-    {
       "name": "Observation",
       "docs": [
         "The element of observations in ObservationState"
@@ -6115,54 +4799,6 @@
       }
     },
     {
-      "name": "OffchainRewardConfig",
-      "docs": [
-        "Holds the current owner of the factory"
-      ],
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "pool_id",
-            "docs": [
-              "the pool state address"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "reward_vault",
-            "docs": [
-              "the vault to hold the reward",
-              "vault address is this config address"
-            ],
-            "type": "pubkey"
-          },
-          {
-            "name": "vault_bump",
-            "docs": [
-              "Bump to identify vault PDA"
-            ],
-            "type": {
-              "array": [
-                "u8",
-                1
-              ]
-            }
-          },
-          {
-            "name": "reward_mint_vec",
-            "docs": [
-              "reward token mint address list",
-              "reward token account is ATA(reward_vault, reward_mint)"
-            ],
-            "type": {
-              "vec": "pubkey"
-            }
-          }
-        ]
-      }
-    },
-    {
       "name": "OperationState",
       "docs": [
         "Holds the current owner of the factory"
@@ -6205,6 +4841,28 @@
                 100
               ]
             }
+          }
+        ]
+      }
+    },
+    {
+      "name": "PermissionlessFarmSwitch",
+      "type": {
+        "kind": "struct",
+        "fields": [
+          {
+            "name": "bump",
+            "docs": [
+              "Bump to identify PDA"
+            ],
+            "type": "u8"
+          },
+          {
+            "name": "is_on",
+            "docs": [
+              "Is the permissionless farm allowed or not"
+            ],
+            "type": "bool"
           }
         ]
       }
@@ -7143,73 +5801,6 @@
                 "u32",
                 13
               ]
-            }
-          }
-        ]
-      }
-    },
-    {
-      "name": "UpdateAdminGroupParams",
-      "type": {
-        "kind": "struct",
-        "fields": [
-          {
-            "name": "fee_keeper",
-            "docs": [
-              "the address who can hold the fee,",
-              "anyone can trigger the fee collection action,"
-            ],
-            "type": {
-              "option": "pubkey"
-            }
-          },
-          {
-            "name": "reward_config_manager",
-            "docs": [
-              "the address who can config the reward(config, deposit, withdraw),",
-              "deposit reward, set the account who can deposit the reward, withdraw the remaining reward(withdraw)"
-            ],
-            "type": {
-              "option": "pubkey"
-            }
-          },
-          {
-            "name": "reward_claim_manager",
-            "docs": [
-              "the address who can manage the offchain reward claim"
-            ],
-            "type": {
-              "option": "pubkey"
-            }
-          },
-          {
-            "name": "pool_manager",
-            "docs": [
-              "the address who can manage the pool create action,",
-              "without this account's permission, no one can create a pool"
-            ],
-            "type": {
-              "option": "pubkey"
-            }
-          },
-          {
-            "name": "emergency_manager",
-            "docs": [
-              "the address who can manage the emergency action,",
-              "emergency action includes stop/resume the pool, stop/resume withdraw lp"
-            ],
-            "type": {
-              "option": "pubkey"
-            }
-          },
-          {
-            "name": "normal_manager",
-            "docs": [
-              "normal action manager,",
-              "such as create amm config, update amm config"
-            ],
-            "type": {
-              "option": "pubkey"
             }
           }
         ]
