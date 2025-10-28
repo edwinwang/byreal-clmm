@@ -112,4 +112,7 @@ pub enum ErrorCode {
     IllegalAccountOwner,
     #[msg("Invalid account")]
     InvalidAccount,
+
+    #[msg("Invalid decay fee params")]
+    DecayFeeNeitherOnSellMint0NorMint1,
 }

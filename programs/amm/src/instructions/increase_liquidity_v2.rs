@@ -20,30 +20,24 @@ pub struct IncreaseLiquidityV2<'info> {
     #[account(mut)]
     pub pool_state: AccountLoader<'info, PoolState>,
 
-    #[account(
-        mut,
-        seeds = [
-            POSITION_SEED.as_bytes(),
-            pool_state.key().as_ref(),
-            &personal_position.tick_lower_index.to_be_bytes(),
-            &personal_position.tick_upper_index.to_be_bytes(),
-        ],
-        bump,
-        constraint = protocol_position.pool_id == pool_state.key(),
-    )]
-    pub protocol_position: Box<Account<'info, ProtocolPositionState>>,
+    /// CHECK: Deprecated: protocol_position is deprecated and kept for compatibility.
+    pub protocol_position: UncheckedAccount<'info>,
 
     /// Increase liquidity for this position
     #[account(mut, constraint = personal_position.pool_id == pool_state.key())]
     pub personal_position: Box<Account<'info, PersonalPositionState>>,
 
+    /// CHECK: both support fix-tick-array and dynamic-tick-array
     /// Stores init state for the lower tick
-    #[account(mut, constraint = tick_array_lower.load()?.pool_id == pool_state.key())]
-    pub tick_array_lower: AccountLoader<'info, TickArrayState>,
+    /// constraint = tick_array_lower.load()?.pool_id == pool_state.key()
+    #[account(mut)]
+    pub tick_array_lower: UncheckedAccount<'info>,
 
+    /// CHECK: both support fix-tick-array and dynamic-tick-array
     /// Stores init state for the upper tick
-    #[account(mut, constraint = tick_array_upper.load()?.pool_id == pool_state.key())]
-    pub tick_array_upper: AccountLoader<'info, TickArrayState>,
+    /// constraint = tick_array_upper.load()?.pool_id == pool_state.key()
+    #[account(mut)]
+    pub tick_array_upper: UncheckedAccount<'info>,
 
     /// The payer's token account for token_0
     #[account(
@@ -111,10 +105,9 @@ pub fn increase_liquidity_v2<'a, 'b, 'c: 'info, 'info>(
     increase_liquidity(
         &ctx.accounts.nft_owner,
         &ctx.accounts.pool_state,
-        &mut ctx.accounts.protocol_position,
         &mut ctx.accounts.personal_position,
-        &ctx.accounts.tick_array_lower,
-        &ctx.accounts.tick_array_upper,
+        &ctx.accounts.tick_array_lower.to_account_info(),
+        &ctx.accounts.tick_array_upper.to_account_info(),
         &ctx.accounts.token_account_0.to_account_info(),
         &ctx.accounts.token_account_1.to_account_info(),
         &ctx.accounts.token_vault_0.to_account_info(),

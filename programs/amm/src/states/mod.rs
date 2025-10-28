@@ -1,5 +1,6 @@
 pub mod admin_group;
 pub mod config;
+pub mod dyn_tick_array;
 pub mod offchain_reward_config;
 pub mod operation_account;
 pub mod oracle;
@@ -8,10 +9,13 @@ pub mod pool;
 pub mod protocol_position;
 pub mod support_mint_associated;
 pub mod tick_array;
+pub mod tick_array_container;
+pub mod tick_state_utils;
 pub mod tickarray_bitmap_extension;
 
 pub use admin_group::*;
 pub use config::*;
+pub use dyn_tick_array::*;
 pub use offchain_reward_config::*;
 pub use operation_account::*;
 pub use oracle::*;
@@ -20,4 +24,6 @@ pub use pool::*;
 pub use protocol_position::*;
 pub use support_mint_associated::*;
 pub use tick_array::*;
+pub use tick_array_container::*;
+pub use tick_state_utils::*;
 pub use tickarray_bitmap_extension::*;

@@ -131,6 +131,18 @@ pub mod byreal_clmm {
         instructions::create_pool(ctx, sqrt_price_x64, open_time)
     }
 
+    /// Creates a pool for the given token pair and the initial price with decay fee
+    /// # Arguments
+    ///
+    /// * `ctx`- The context of accounts
+    /// * `params` - The parameters for creating the pool with decay fee
+    pub fn create_pool_decay_fee(
+        ctx: Context<CreatePool>,
+        params: CreatePoolDecayFeeParams,
+    ) -> Result<()> {
+        instructions::create_pool_decay_fee(ctx, params)
+    }
+
     /// Update pool status for given value
     ///
     /// # Arguments
@@ -593,4 +605,10 @@ pub mod byreal_clmm {
     // ) -> Result<()> {
     //     instructions::swap_router_base_in(ctx, amount_in, amount_out_minimum)
     // }
+
+    /// close the protocol position, send the remaining fund fee to admin fee keeper
+    /// this instruction will be delete after all protocol position is closed
+    pub fn close_protocol_position(ctx: Context<CloseProtocolPositionAccounts>) -> Result<()> {
+        instructions::close_protocol_position(ctx)
+    }
 }

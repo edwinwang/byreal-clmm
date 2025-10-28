@@ -25,18 +25,8 @@ pub struct DecreaseLiquidityV2<'info> {
     #[account(mut)]
     pub pool_state: AccountLoader<'info, PoolState>,
 
-    #[account(
-        mut,
-        seeds = [
-            POSITION_SEED.as_bytes(),
-            pool_state.key().as_ref(),
-            &personal_position.tick_lower_index.to_be_bytes(),
-            &personal_position.tick_upper_index.to_be_bytes(),
-        ],
-        bump,
-        constraint = protocol_position.pool_id == pool_state.key(),
-    )]
-    pub protocol_position: Box<Account<'info, ProtocolPositionState>>,
+    /// CHECK: Deprecated: protocol_position is deprecated and kept for compatibility.
+    pub protocol_position: UncheckedAccount<'info>,
 
     /// Token_0 vault
     #[account(
@@ -52,13 +42,17 @@ pub struct DecreaseLiquidityV2<'info> {
     )]
     pub token_vault_1: Box<InterfaceAccount<'info, TokenAccount>>,
 
+    /// CHECK: both support fix-tick-array and dynamic-tick-array
     /// Stores init state for the lower tick
-    #[account(mut, constraint = tick_array_lower.load()?.pool_id == pool_state.key())]
-    pub tick_array_lower: AccountLoader<'info, TickArrayState>,
+    /// constraint = tick_array_lower.load()?.pool_id == pool_state.key()
+    #[account(mut)]
+    pub tick_array_lower: UncheckedAccount<'info>,
 
+    /// CHECK: both support fix-tick-array and dynamic-tick-array
     /// Stores init state for the upper tick
-    #[account(mut, constraint = tick_array_upper.load()?.pool_id == pool_state.key())]
-    pub tick_array_upper: AccountLoader<'info, TickArrayState>,
+    /// constraint = tick_array_upper.load()?.pool_id == pool_state.key()
+    #[account(mut)]
+    pub tick_array_upper: UncheckedAccount<'info>,
 
     /// The destination token account for receive amount_0
     #[account(
@@ -114,14 +108,28 @@ pub fn decrease_liquidity_v2<'a, 'b, 'c: 'info, 'info>(
     amount_0_min: u64,
     amount_1_min: u64,
 ) -> Result<()> {
+    let tick_spacing = ctx.accounts.pool_state.load()?.tick_spacing;
+    let tick_lower = ctx.accounts.personal_position.tick_lower_index;
+    let tick_upper = ctx.accounts.personal_position.tick_upper_index;
+
+    let tick_array_lower_loader = TickArrayContainer::try_from(
+        &ctx.accounts.tick_array_lower.to_account_info(),
+        tick_lower,
+        tick_spacing,
+    )?;
+    let tick_array_upper_loader = TickArrayContainer::try_from(
+        &ctx.accounts.tick_array_upper.to_account_info(),
+        tick_upper,
+        tick_spacing,
+    )?;
+
     decrease_liquidity(
         &ctx.accounts.pool_state,
-        &mut ctx.accounts.protocol_position,
         &mut ctx.accounts.personal_position,
         &ctx.accounts.token_vault_0.to_account_info(),
         &ctx.accounts.token_vault_1.to_account_info(),
-        &ctx.accounts.tick_array_lower,
-        &ctx.accounts.tick_array_upper,
+        &tick_array_lower_loader,
+        &tick_array_upper_loader,
         &ctx.accounts.recipient_token_account_0.to_account_info(),
         &ctx.accounts.recipient_token_account_1.to_account_info(),
         &ctx.accounts.token_program,

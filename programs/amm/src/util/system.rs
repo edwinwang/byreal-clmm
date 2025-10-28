@@ -1,3 +1,4 @@
+use crate::error::ErrorCode;
 use anchor_lang::{prelude::*, system_program};
 
 pub fn create_or_allocate_account<'a>(
@@ -53,6 +54,61 @@ pub fn create_or_allocate_account<'a>(
         system_program::assign(cpi_context.with_signer(&[siger_seed]), program_id)?;
     }
     Ok(())
+}
+
+/// Check if the target account space needs to be reallocated to fit the new_account_space.
+/// Returns `true` if the account was reallocated.
+pub fn realloc_account_if_needed<'a>(
+    target_account: &AccountInfo<'a>,
+    new_account_space: usize,
+    rent_payer: &AccountInfo<'a>,
+    system_program: &AccountInfo<'a>,
+) -> Result<bool> {
+    // Sanity checks
+    require_keys_eq!(
+        *target_account.owner,
+        crate::id(),
+        ErrorCode::IllegalAccountOwner
+    );
+
+    let current_account_size = target_account.data.borrow().len();
+
+    // Check if we need to reallocate space.
+    if current_account_size >= new_account_space {
+        return Ok(false);
+    }
+
+    // Reallocate more space.
+    AccountInfo::resize(target_account, new_account_space)?;
+
+    // If more lamports are needed, transfer them to the account.
+    let rent_exempt_lamports = Rent::get()
+        .unwrap()
+        .minimum_balance(new_account_space)
+        .max(1);
+    let top_up_lamports =
+        rent_exempt_lamports.saturating_sub(target_account.to_account_info().lamports());
+
+    if top_up_lamports > 0 {
+        require_keys_eq!(
+            *system_program.key,
+            system_program::ID,
+            ErrorCode::InvalidAccount
+        );
+
+        system_program::transfer(
+            CpiContext::new(
+                system_program.clone(),
+                system_program::Transfer {
+                    from: rent_payer.clone(),
+                    to: target_account.clone(),
+                },
+            ),
+            top_up_lamports,
+        )?;
+    }
+
+    Ok(true)
 }
 
 #[cfg(not(any(test, feature = "client")))]
