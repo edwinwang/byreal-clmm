@@ -179,7 +179,10 @@ pub fn decrease_liquidity<'a, 'b, 'c: 'info, 'info>(
         ]);
 
         for account_info in remaining_accounts.into_iter() {
-            if account_info.key().eq(&TickArrayBitmapExtension::key(pool_state.key())) {
+            if account_info
+                .key()
+                .eq(&TickArrayBitmapExtension::key(pool_state.key()))
+            {
                 tickarray_bitmap_extension = Some(account_info);
                 continue;
             }
@@ -206,10 +209,12 @@ pub fn decrease_liquidity<'a, 'b, 'c: 'info, 'info>(
     let mut transfer_fee_0 = 0;
     let mut transfer_fee_1 = 0;
     if vault_0_mint.is_some() {
-        transfer_fee_0 = util::get_transfer_fee(vault_0_mint.clone().unwrap(), decrease_amount_0).unwrap();
+        transfer_fee_0 =
+            util::get_transfer_fee(vault_0_mint.clone().unwrap(), decrease_amount_0).unwrap();
     }
     if vault_1_mint.is_some() {
-        transfer_fee_1 = util::get_transfer_fee(vault_1_mint.clone().unwrap(), decrease_amount_1).unwrap();
+        transfer_fee_1 =
+            util::get_transfer_fee(vault_1_mint.clone().unwrap(), decrease_amount_1).unwrap();
     }
     emit!(LiquidityCalculateEvent {
         pool_liquidity: liquidity_before,
@@ -280,7 +285,11 @@ pub fn decrease_liquidity<'a, 'b, 'c: 'info, 'info>(
         token_program,
         token_2022_program_opt.clone(),
         personal_position,
-        if token_2022_program_opt.is_none() { false } else { true },
+        if token_2022_program_opt.is_none() {
+            false
+        } else {
+            true
+        },
     )?;
     emit!(DecreaseLiquidityEvent {
         position_nft_mint: personal_position.nft_mint,
@@ -471,15 +480,21 @@ pub fn collect_rewards<'a, 'b, 'c, 'info>(
     if !need_reward_mint {
         reward_group_account_num = reward_group_account_num - 1
     }
-    check_required_accounts_length(pool_state_loader, remaining_accounts, reward_group_account_num)?;
+    check_required_accounts_length(
+        pool_state_loader,
+        remaining_accounts,
+        reward_group_account_num,
+    )?;
 
     let remaining_accounts_len = remaining_accounts.len();
     let mut remaining_accounts = remaining_accounts.iter();
     for i in 0..remaining_accounts_len / reward_group_account_num {
-        let reward_token_vault =
-            InterfaceAccount::<token_interface::TokenAccount>::try_from(remaining_accounts.next().unwrap())?;
-        let recipient_token_account =
-            InterfaceAccount::<token_interface::TokenAccount>::try_from(remaining_accounts.next().unwrap())?;
+        let reward_token_vault = InterfaceAccount::<token_interface::TokenAccount>::try_from(
+            remaining_accounts.next().unwrap(),
+        )?;
+        let recipient_token_account = InterfaceAccount::<token_interface::TokenAccount>::try_from(
+            remaining_accounts.next().unwrap(),
+        )?;
 
         let mut reward_vault_mint: Option<Box<InterfaceAccount<Mint>>> = None;
         if need_reward_mint {
@@ -516,7 +531,9 @@ pub fn collect_rewards<'a, 'b, 'c, 'info>(
             );
             personal_position_state.reward_infos[i].reward_amount_owed =
                 reward_amount_owed.checked_sub(transfer_amount).unwrap();
-            pool_state_loader.load_mut()?.add_reward_clamed(i, transfer_amount)?;
+            pool_state_loader
+                .load_mut()?
+                .add_reward_clamed(i, transfer_amount)?;
 
             transfer_from_pool_vault_to_user(
                 &pool_state_loader,
@@ -558,19 +575,17 @@ pub fn check_unclaimed_fees_and_vault(
     token_vault_0: &AccountInfo,
     token_vault_1: &AccountInfo,
 ) -> Result<()> {
-    let token_vault_0_amount =
-        spl_token_2022::extension::StateWithExtensions::<spl_token_2022::state::Account>::unpack(
-            token_vault_0.try_borrow_data()?.deref(),
-        )?
-        .base
-        .amount;
+    let token_vault_0_amount = spl_token_2022::extension::StateWithExtensions::<
+        spl_token_2022::state::Account,
+    >::unpack(token_vault_0.try_borrow_data()?.deref())?
+    .base
+    .amount;
 
-    let token_vault_1_amount =
-        spl_token_2022::extension::StateWithExtensions::<spl_token_2022::state::Account>::unpack(
-            token_vault_1.try_borrow_data()?.deref(),
-        )?
-        .base
-        .amount;
+    let token_vault_1_amount = spl_token_2022::extension::StateWithExtensions::<
+        spl_token_2022::state::Account,
+    >::unpack(token_vault_1.try_borrow_data()?.deref())?
+    .base
+    .amount;
 
     let pool_state = &mut pool_state_loader.load_mut()?;
 

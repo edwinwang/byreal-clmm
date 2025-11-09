@@ -1,5 +1,7 @@
 use crate::error::ErrorCode;
-use crate::libraries::{big_num::U128, fixed_point_64, full_math::MulDiv, liquidity_math, swap_math, tick_math};
+use crate::libraries::{
+    big_num::U128, fixed_point_64, full_math::MulDiv, liquidity_math, swap_math, tick_math,
+};
 use crate::states::*;
 use crate::util::*;
 use anchor_lang::{prelude::*, solana_program};
@@ -143,9 +145,11 @@ pub fn swap_internal<'b, 'info>(
     }
     require!(
         if zero_for_one {
-            sqrt_price_limit_x64 < pool_state.sqrt_price_x64 && sqrt_price_limit_x64 > tick_math::MIN_SQRT_PRICE_X64
+            sqrt_price_limit_x64 < pool_state.sqrt_price_x64
+                && sqrt_price_limit_x64 > tick_math::MIN_SQRT_PRICE_X64
         } else {
-            sqrt_price_limit_x64 > pool_state.sqrt_price_x64 && sqrt_price_limit_x64 < tick_math::MAX_SQRT_PRICE_X64
+            sqrt_price_limit_x64 > pool_state.sqrt_price_x64
+                && sqrt_price_limit_x64 < tick_math::MAX_SQRT_PRICE_X64
         },
         ErrorCode::SqrtPriceLimitOverflow
     );
@@ -218,8 +222,8 @@ pub fn swap_internal<'b, 'info>(
         let mut step = StepComputations::default();
         step.sqrt_price_start_x64 = state.sqrt_price_x64;
 
-        let mut next_initialized_tick = if let Some(tick_state) =
-            tick_array_current.next_initialized_tick(state.tick, pool_state.tick_spacing, zero_for_one)?
+        let mut next_initialized_tick = if let Some(tick_state) = tick_array_current
+            .next_initialized_tick(state.tick, pool_state.tick_spacing, zero_for_one)?
         {
             Box::new(*tick_state)
         } else {
@@ -238,16 +242,19 @@ pub fn swap_internal<'b, 'info>(
             tick_array_current.key().to_string(),
         );
         if !next_initialized_tick.is_initialized() {
-            let next_initialized_tickarray_index = pool_state.next_initialized_tick_array_start_index(
-                &tickarray_bitmap_extension,
-                current_valid_tick_array_start_index,
-                zero_for_one,
-            )?;
+            let next_initialized_tickarray_index = pool_state
+                .next_initialized_tick_array_start_index(
+                    &tickarray_bitmap_extension,
+                    current_valid_tick_array_start_index,
+                    zero_for_one,
+                )?;
             if next_initialized_tickarray_index.is_none() {
                 return err!(ErrorCode::LiquidityInsufficient);
             }
 
-            while tick_array_current.get_start_tick_index() != next_initialized_tickarray_index.unwrap() {
+            while tick_array_current.get_start_tick_index()
+                != next_initialized_tickarray_index.unwrap()
+            {
                 tick_array_current = tick_array_states
                     .pop_front()
                     .ok_or(ErrorCode::NotEnoughTickArrayAccount)?;
@@ -357,9 +364,15 @@ pub fn swap_internal<'b, 'info>(
                 .amount_specified_remaining
                 .checked_sub(step.amount_in + step.fee_amount)
                 .unwrap();
-            state.amount_calculated = state.amount_calculated.checked_add(step.amount_out).unwrap();
+            state.amount_calculated = state
+                .amount_calculated
+                .checked_add(step.amount_out)
+                .unwrap();
         } else {
-            state.amount_specified_remaining = state.amount_specified_remaining.checked_sub(step.amount_out).unwrap();
+            state.amount_specified_remaining = state
+                .amount_specified_remaining
+                .checked_sub(step.amount_out)
+                .unwrap();
 
             let step_amount_calculate = step
                 .amount_in
@@ -501,19 +514,26 @@ pub fn swap_internal<'b, 'info>(
 
     let (amount_0, amount_1) = if zero_for_one == is_base_input {
         (
-            amount_specified.checked_sub(state.amount_specified_remaining).unwrap(),
+            amount_specified
+                .checked_sub(state.amount_specified_remaining)
+                .unwrap(),
             state.amount_calculated,
         )
     } else {
         (
             state.amount_calculated,
-            amount_specified.checked_sub(state.amount_specified_remaining).unwrap(),
+            amount_specified
+                .checked_sub(state.amount_specified_remaining)
+                .unwrap(),
         )
     };
 
     if zero_for_one {
         pool_state.fee_growth_global_0_x64 = state.fee_growth_global_x64;
-        pool_state.total_fees_token_0 = pool_state.total_fees_token_0.checked_add(state.fee_amount).unwrap();
+        pool_state.total_fees_token_0 = pool_state
+            .total_fees_token_0
+            .checked_add(state.fee_amount)
+            .unwrap();
 
         if state.protocol_fee > 0 {
             pool_state.protocol_fees_token_0 = pool_state
@@ -522,7 +542,10 @@ pub fn swap_internal<'b, 'info>(
                 .unwrap();
         }
         if state.fund_fee > 0 {
-            pool_state.fund_fees_token_0 = pool_state.fund_fees_token_0.checked_add(state.fund_fee).unwrap();
+            pool_state.fund_fees_token_0 = pool_state
+                .fund_fees_token_0
+                .checked_add(state.fund_fee)
+                .unwrap();
         }
         pool_state.swap_in_amount_token_0 = pool_state
             .swap_in_amount_token_0
@@ -534,7 +557,10 @@ pub fn swap_internal<'b, 'info>(
             .unwrap();
     } else {
         pool_state.fee_growth_global_1_x64 = state.fee_growth_global_x64;
-        pool_state.total_fees_token_1 = pool_state.total_fees_token_1.checked_add(state.fee_amount).unwrap();
+        pool_state.total_fees_token_1 = pool_state
+            .total_fees_token_1
+            .checked_add(state.fee_amount)
+            .unwrap();
 
         if state.protocol_fee > 0 {
             pool_state.protocol_fees_token_1 = pool_state
@@ -543,7 +569,10 @@ pub fn swap_internal<'b, 'info>(
                 .unwrap();
         }
         if state.fund_fee > 0 {
-            pool_state.fund_fees_token_1 = pool_state.fund_fees_token_1.checked_add(state.fund_fee).unwrap();
+            pool_state.fund_fees_token_1 = pool_state
+                .fund_fees_token_1
+                .checked_add(state.fund_fee)
+                .unwrap();
         }
         pool_state.swap_in_amount_token_1 = pool_state
             .swap_in_amount_token_1
@@ -587,9 +616,11 @@ pub fn exact_internal<'b, 'c: 'info, 'info>(
 
         require!(
             if zero_for_one {
-                ctx.input_vault.key() == pool_state.token_vault_0 && ctx.output_vault.key() == pool_state.token_vault_1
+                ctx.input_vault.key() == pool_state.token_vault_0
+                    && ctx.output_vault.key() == pool_state.token_vault_1
             } else {
-                ctx.input_vault.key() == pool_state.token_vault_1 && ctx.output_vault.key() == pool_state.token_vault_0
+                ctx.input_vault.key() == pool_state.token_vault_1
+                    && ctx.output_vault.key() == pool_state.token_vault_0
             },
             ErrorCode::InvalidInputPoolVault
         );
@@ -639,7 +670,10 @@ pub fn exact_internal<'b, 'c: 'info, 'info>(
             amount_0,
             amount_1
         );
-        require!(amount_0 != 0 && amount_1 != 0, ErrorCode::TooSmallInputOrOutputAmount);
+        require!(
+            amount_0 != 0 && amount_1 != 0,
+            ErrorCode::TooSmallInputOrOutputAmount
+        );
     }
     let (token_account_0, token_account_1, vault_0, vault_1) = if zero_for_one {
         (
@@ -747,9 +781,15 @@ pub fn exact_internal<'b, 'c: 'info, 'info>(
     }
 
     if is_base_input {
-        Ok(output_balance_before.checked_sub(ctx.output_vault.amount).unwrap())
+        Ok(output_balance_before
+            .checked_sub(ctx.output_vault.amount)
+            .unwrap())
     } else {
-        Ok(ctx.input_vault.amount.checked_sub(input_balance_before).unwrap())
+        Ok(ctx
+            .input_vault
+            .amount
+            .checked_sub(input_balance_before)
+            .unwrap())
     }
 }
 
@@ -762,8 +802,12 @@ pub fn swap<'a, 'b, 'c: 'info, 'info>(
 ) -> Result<()> {
     // check tick array account is owned by the pool
     require_keys_eq!(*ctx.accounts.tick_array.owner, crate::id());
-    let tick_array_container = TickArrayContainer::try_from_without_check(&ctx.accounts.tick_array.to_account_info())?;
-    require_keys_eq!(tick_array_container.get_pool_id()?, ctx.accounts.pool_state.key());
+    let tick_array_container =
+        TickArrayContainer::try_from_without_check(&ctx.accounts.tick_array.to_account_info())?;
+    require_keys_eq!(
+        tick_array_container.get_pool_id()?,
+        ctx.accounts.pool_state.key()
+    );
 
     let amount = exact_internal(
         &mut SwapAccounts {
@@ -784,9 +828,15 @@ pub fn swap<'a, 'b, 'c: 'info, 'info>(
         is_base_input,
     )?;
     if is_base_input {
-        require!(amount >= other_amount_threshold, ErrorCode::TooLittleOutputReceived);
+        require!(
+            amount >= other_amount_threshold,
+            ErrorCode::TooLittleOutputReceived
+        );
     } else {
-        require!(amount <= other_amount_threshold, ErrorCode::TooMuchInputPaid);
+        require!(
+            amount <= other_amount_threshold,
+            ErrorCode::TooMuchInputPaid
+        );
     }
 
     Ok(())
@@ -795,11 +845,15 @@ pub fn swap<'a, 'b, 'c: 'info, 'info>(
 #[cfg(test)]
 mod swap_test {
     use liquidity_math::get_delta_amounts_signed;
-    use tick_array_bitmap_extension_test::{build_tick_array_bitmap_extension_info, BuildExtensionAccountInfo};
+    use tick_array_bitmap_extension_test::{
+        build_tick_array_bitmap_extension_info, BuildExtensionAccountInfo,
+    };
 
     use super::*;
     use crate::states::pool_test::build_pool;
-    use crate::states::tick_array_test::{build_tick, build_tick_array_with_tick_states, TickArrayInfo};
+    use crate::states::tick_array_test::{
+        build_tick, build_tick_array_with_tick_states, TickArrayInfo,
+    };
     use std::cell::RefCell;
     use std::collections::HashMap;
     use std::vec;
@@ -962,7 +1016,9 @@ mod swap_test {
 
                     tick_array_map.insert(tick_array_lower_start_index, tick_array_refcel);
                 } else {
-                    let tick_array_lower = tick_array_map.get_mut(&tick_array_lower_start_index).unwrap();
+                    let tick_array_lower = tick_array_map
+                        .get_mut(&tick_array_lower_start_index)
+                        .unwrap();
                     let mut tick_array_lower_borrow_mut = tick_array_lower.borrow_mut();
                     let tick_lower = tick_array_lower_borrow_mut
                         .get_tick_state_mut(position_param.tick_lower, tick_spacing)
@@ -1008,7 +1064,9 @@ mod swap_test {
 
                     tick_array_map.insert(tick_array_upper_start_index, tick_array_refcel);
                 } else {
-                    let tick_array_upper = tick_array_map.get_mut(&tick_array_upper_start_index).unwrap();
+                    let tick_array_upper = tick_array_map
+                        .get_mut(&tick_array_upper_start_index)
+                        .unwrap();
 
                     let mut tick_array_upperr_borrow_mut = tick_array_upper.borrow_mut();
                     let tick_upper = tick_array_upperr_borrow_mut
@@ -1029,8 +1087,11 @@ mod swap_test {
                 if pool_state.tick_current >= position_param.tick_lower
                     && pool_state.tick_current < position_param.tick_upper
                 {
-                    pool_state.liquidity =
-                        liquidity_math::add_delta(pool_state.liquidity, i128::try_from(liquidity).unwrap()).unwrap();
+                    pool_state.liquidity = liquidity_math::add_delta(
+                        pool_state.liquidity,
+                        i128::try_from(liquidity).unwrap(),
+                    )
+                    .unwrap();
                 }
             }
             for (tickarray_start_index, tick_array_info) in tick_array_map {
@@ -1042,20 +1103,23 @@ mod swap_test {
 
             use std::convert::identity;
             if zero_for_one {
-                tick_array_states
-                    .make_contiguous()
-                    .sort_by(|a, b| identity(b.borrow().start_tick_index).cmp(&identity(a.borrow().start_tick_index)));
+                tick_array_states.make_contiguous().sort_by(|a, b| {
+                    identity(b.borrow().start_tick_index)
+                        .cmp(&identity(a.borrow().start_tick_index))
+                });
             } else {
-                tick_array_states
-                    .make_contiguous()
-                    .sort_by(|a, b| identity(a.borrow().start_tick_index).cmp(&identity(b.borrow().start_tick_index)));
+                tick_array_states.make_contiguous().sort_by(|a, b| {
+                    identity(a.borrow().start_tick_index)
+                        .cmp(&identity(b.borrow().start_tick_index))
+                });
             }
         }
-        let bitmap_extension_state = *AccountLoader::<TickArrayBitmapExtension>::try_from(&bitmap_extension)
-            .unwrap()
-            .load()
-            .unwrap()
-            .deref();
+        let bitmap_extension_state =
+            *AccountLoader::<TickArrayBitmapExtension>::try_from(&bitmap_extension)
+                .unwrap()
+                .load()
+                .unwrap()
+                .deref();
 
         (
             amm_config,
@@ -1077,31 +1141,32 @@ mod swap_test {
             let mut tick_current = -32395;
             let mut liquidity = 5124165121219;
             let mut sqrt_price_x64 = 3651942632306380802;
-            let (amm_config, pool_state, mut tick_array_states, observation_state) = build_swap_param(
-                tick_current,
-                60,
-                sqrt_price_x64,
-                liquidity,
-                vec![
-                    TickArrayInfo {
-                        start_tick_index: -32400,
-                        ticks: vec![
-                            build_tick(-32400, 277065331032, -277065331032).take(),
-                            build_tick(-29220, 1330680689, -1330680689).take(),
-                            build_tick(-28860, 6408486554, -6408486554).take(),
-                        ],
-                    },
-                    TickArrayInfo {
-                        start_tick_index: -36000,
-                        ticks: vec![
-                            build_tick(-32460, 1194569667438, 536061033698).take(),
-                            build_tick(-32520, 790917615645, 790917615645).take(),
-                            build_tick(-32580, 152146472301, 128451145459).take(),
-                            build_tick(-32640, 2625605835354, -1492054447712).take(),
-                        ],
-                    },
-                ],
-            );
+            let (amm_config, pool_state, mut tick_array_states, observation_state) =
+                build_swap_param(
+                    tick_current,
+                    60,
+                    sqrt_price_x64,
+                    liquidity,
+                    vec![
+                        TickArrayInfo {
+                            start_tick_index: -32400,
+                            ticks: vec![
+                                build_tick(-32400, 277065331032, -277065331032).take(),
+                                build_tick(-29220, 1330680689, -1330680689).take(),
+                                build_tick(-28860, 6408486554, -6408486554).take(),
+                            ],
+                        },
+                        TickArrayInfo {
+                            start_tick_index: -36000,
+                            ticks: vec![
+                                build_tick(-32460, 1194569667438, 536061033698).take(),
+                                build_tick(-32520, 790917615645, 790917615645).take(),
+                                build_tick(-32580, 152146472301, 128451145459).take(),
+                                build_tick(-32640, 2625605835354, -1492054447712).take(),
+                            ],
+                        },
+                    ],
+                );
 
             // just cross the tickarray boundary(-32400), hasn't reached the next tick array initialized tick
             let (amount_0, amount_1) = swap_internal(
@@ -1119,7 +1184,10 @@ mod swap_test {
             .unwrap();
             println!("amount_0:{},amount_1:{}", amount_0, amount_1);
             assert!(pool_state.borrow().tick_current < tick_current);
-            assert!(pool_state.borrow().tick_current > -32460 && pool_state.borrow().tick_current < -32400);
+            assert!(
+                pool_state.borrow().tick_current > -32460
+                    && pool_state.borrow().tick_current < -32400
+            );
             assert!(pool_state.borrow().sqrt_price_x64 < sqrt_price_x64);
             assert!(pool_state.borrow().liquidity == (liquidity + 277065331032));
             assert!(amount_0 == 12188240002);
@@ -1147,7 +1215,10 @@ mod swap_test {
             .unwrap();
             println!("amount_0:{},amount_1:{}", amount_0, amount_1);
             assert!(pool_state.borrow().tick_current < tick_current);
-            assert!(pool_state.borrow().tick_current > -32520 && pool_state.borrow().tick_current < -32460);
+            assert!(
+                pool_state.borrow().tick_current > -32520
+                    && pool_state.borrow().tick_current < -32460
+            );
             assert!(pool_state.borrow().sqrt_price_x64 < sqrt_price_x64);
             assert!(pool_state.borrow().liquidity == (liquidity - 536061033698));
             assert!(amount_0 == 121882400020);
@@ -1172,7 +1243,10 @@ mod swap_test {
             .unwrap();
             println!("amount_0:{},amount_1:{}", amount_0, amount_1);
             assert!(pool_state.borrow().tick_current < tick_current);
-            assert!(pool_state.borrow().tick_current > -32580 && pool_state.borrow().tick_current < -32520);
+            assert!(
+                pool_state.borrow().tick_current > -32580
+                    && pool_state.borrow().tick_current < -32520
+            );
             assert!(pool_state.borrow().sqrt_price_x64 < sqrt_price_x64);
             assert!(pool_state.borrow().liquidity == (liquidity - 790917615645));
             assert!(amount_0 == 60941200010);
@@ -1183,31 +1257,32 @@ mod swap_test {
             let mut tick_current = -32395;
             let mut liquidity = 5124165121219;
             let mut sqrt_price_x64 = 3651942632306380802;
-            let (amm_config, pool_state, mut tick_array_states, observation_state) = build_swap_param(
-                tick_current,
-                60,
-                sqrt_price_x64,
-                liquidity,
-                vec![
-                    TickArrayInfo {
-                        start_tick_index: -32400,
-                        ticks: vec![
-                            build_tick(-32400, 277065331032, -277065331032).take(),
-                            build_tick(-29220, 1330680689, -1330680689).take(),
-                            build_tick(-28860, 6408486554, -6408486554).take(),
-                        ],
-                    },
-                    TickArrayInfo {
-                        start_tick_index: -36000,
-                        ticks: vec![
-                            build_tick(-32460, 1194569667438, 536061033698).take(),
-                            build_tick(-32520, 790917615645, 790917615645).take(),
-                            build_tick(-32580, 152146472301, 128451145459).take(),
-                            build_tick(-32640, 2625605835354, -1492054447712).take(),
-                        ],
-                    },
-                ],
-            );
+            let (amm_config, pool_state, mut tick_array_states, observation_state) =
+                build_swap_param(
+                    tick_current,
+                    60,
+                    sqrt_price_x64,
+                    liquidity,
+                    vec![
+                        TickArrayInfo {
+                            start_tick_index: -32400,
+                            ticks: vec![
+                                build_tick(-32400, 277065331032, -277065331032).take(),
+                                build_tick(-29220, 1330680689, -1330680689).take(),
+                                build_tick(-28860, 6408486554, -6408486554).take(),
+                            ],
+                        },
+                        TickArrayInfo {
+                            start_tick_index: -36000,
+                            ticks: vec![
+                                build_tick(-32460, 1194569667438, 536061033698).take(),
+                                build_tick(-32520, 790917615645, 790917615645).take(),
+                                build_tick(-32580, 152146472301, 128451145459).take(),
+                                build_tick(-32640, 2625605835354, -1492054447712).take(),
+                            ],
+                        },
+                    ],
+                );
 
             // just cross the tickarray boundary(-32400), hasn't reached the next tick array initialized tick
             let (amount_0, amount_1) = swap_internal(
@@ -1225,7 +1300,10 @@ mod swap_test {
             .unwrap();
             println!("amount_0:{},amount_1:{}", amount_0, amount_1);
             assert!(pool_state.borrow().tick_current < tick_current);
-            assert!(pool_state.borrow().tick_current > -32460 && pool_state.borrow().tick_current < -32400);
+            assert!(
+                pool_state.borrow().tick_current > -32460
+                    && pool_state.borrow().tick_current < -32400
+            );
             assert!(pool_state.borrow().sqrt_price_x64 < sqrt_price_x64);
             assert!(pool_state.borrow().liquidity == (liquidity + 277065331032));
             assert!(amount_1 == 477470480);
@@ -1253,7 +1331,10 @@ mod swap_test {
             .unwrap();
             println!("amount_0:{},amount_1:{}", amount_0, amount_1);
             assert!(pool_state.borrow().tick_current < tick_current);
-            assert!(pool_state.borrow().tick_current > -32520 && pool_state.borrow().tick_current < -32460);
+            assert!(
+                pool_state.borrow().tick_current > -32520
+                    && pool_state.borrow().tick_current < -32460
+            );
             assert!(pool_state.borrow().sqrt_price_x64 < sqrt_price_x64);
             assert!(pool_state.borrow().liquidity == (liquidity - 536061033698));
             assert!(amount_1 == 4751002622);
@@ -1278,7 +1359,10 @@ mod swap_test {
             .unwrap();
             println!("amount_0:{},amount_1:{}", amount_0, amount_1);
             assert!(pool_state.borrow().tick_current < tick_current);
-            assert!(pool_state.borrow().tick_current > -32580 && pool_state.borrow().tick_current < -32520);
+            assert!(
+                pool_state.borrow().tick_current > -32580
+                    && pool_state.borrow().tick_current < -32520
+            );
             assert!(pool_state.borrow().sqrt_price_x64 < sqrt_price_x64);
             assert!(pool_state.borrow().liquidity == (liquidity - 790917615645));
             assert!(amount_1 == 2358130642);
@@ -1289,31 +1373,32 @@ mod swap_test {
             let mut tick_current = -32470;
             let mut liquidity = 5124165121219;
             let mut sqrt_price_x64 = 3638127228312488926;
-            let (amm_config, pool_state, mut tick_array_states, observation_state) = build_swap_param(
-                tick_current,
-                60,
-                sqrt_price_x64,
-                liquidity,
-                vec![
-                    TickArrayInfo {
-                        start_tick_index: -36000,
-                        ticks: vec![
-                            build_tick(-32460, 1194569667438, 536061033698).take(),
-                            build_tick(-32520, 790917615645, 790917615645).take(),
-                            build_tick(-32580, 152146472301, 128451145459).take(),
-                            build_tick(-32640, 2625605835354, -1492054447712).take(),
-                        ],
-                    },
-                    TickArrayInfo {
-                        start_tick_index: -32400,
-                        ticks: vec![
-                            build_tick(-32400, 277065331032, -277065331032).take(),
-                            build_tick(-29220, 1330680689, -1330680689).take(),
-                            build_tick(-28860, 6408486554, -6408486554).take(),
-                        ],
-                    },
-                ],
-            );
+            let (amm_config, pool_state, mut tick_array_states, observation_state) =
+                build_swap_param(
+                    tick_current,
+                    60,
+                    sqrt_price_x64,
+                    liquidity,
+                    vec![
+                        TickArrayInfo {
+                            start_tick_index: -36000,
+                            ticks: vec![
+                                build_tick(-32460, 1194569667438, 536061033698).take(),
+                                build_tick(-32520, 790917615645, 790917615645).take(),
+                                build_tick(-32580, 152146472301, 128451145459).take(),
+                                build_tick(-32640, 2625605835354, -1492054447712).take(),
+                            ],
+                        },
+                        TickArrayInfo {
+                            start_tick_index: -32400,
+                            ticks: vec![
+                                build_tick(-32400, 277065331032, -277065331032).take(),
+                                build_tick(-29220, 1330680689, -1330680689).take(),
+                                build_tick(-28860, 6408486554, -6408486554).take(),
+                            ],
+                        },
+                    ],
+                );
 
             // just cross the tickarray boundary(-32460), hasn't reached the next tick array initialized tick
             let (amount_0, amount_1) = swap_internal(
@@ -1331,7 +1416,10 @@ mod swap_test {
             .unwrap();
             println!("amount_0:{},amount_1:{}", amount_0, amount_1);
             assert!(pool_state.borrow().tick_current > tick_current);
-            assert!(pool_state.borrow().tick_current > -32460 && pool_state.borrow().tick_current < -32400);
+            assert!(
+                pool_state.borrow().tick_current > -32460
+                    && pool_state.borrow().tick_current < -32400
+            );
             assert!(pool_state.borrow().sqrt_price_x64 > sqrt_price_x64);
             assert!(pool_state.borrow().liquidity == (liquidity + 536061033698));
             assert!(amount_1 == 887470480);
@@ -1358,7 +1446,10 @@ mod swap_test {
             .unwrap();
             println!("amount_0:{},amount_1:{}", amount_0, amount_1);
             assert!(pool_state.borrow().tick_current > tick_current);
-            assert!(pool_state.borrow().tick_current > -32400 && pool_state.borrow().tick_current < -29220);
+            assert!(
+                pool_state.borrow().tick_current > -32400
+                    && pool_state.borrow().tick_current < -29220
+            );
             assert!(pool_state.borrow().sqrt_price_x64 > sqrt_price_x64);
             assert!(pool_state.borrow().liquidity == (liquidity - 277065331032));
             assert!(amount_1 == 3087470480);
@@ -1384,7 +1475,10 @@ mod swap_test {
             .unwrap();
             println!("amount_0:{},amount_1:{}", amount_0, amount_1);
             assert!(pool_state.borrow().tick_current > tick_current);
-            assert!(pool_state.borrow().tick_current > -29220 && pool_state.borrow().tick_current < -28860);
+            assert!(
+                pool_state.borrow().tick_current > -29220
+                    && pool_state.borrow().tick_current < -28860
+            );
             assert!(pool_state.borrow().sqrt_price_x64 > sqrt_price_x64);
             assert!(pool_state.borrow().liquidity == (liquidity - 1330680689));
             assert!(amount_1 == 200941200010);
@@ -1395,31 +1489,32 @@ mod swap_test {
             let mut tick_current = -32470;
             let mut liquidity = 5124165121219;
             let mut sqrt_price_x64 = 3638127228312488926;
-            let (amm_config, pool_state, mut tick_array_states, observation_state) = build_swap_param(
-                tick_current,
-                60,
-                sqrt_price_x64,
-                liquidity,
-                vec![
-                    TickArrayInfo {
-                        start_tick_index: -36000,
-                        ticks: vec![
-                            build_tick(-32460, 1194569667438, 536061033698).take(),
-                            build_tick(-32520, 790917615645, 790917615645).take(),
-                            build_tick(-32580, 152146472301, 128451145459).take(),
-                            build_tick(-32640, 2625605835354, -1492054447712).take(),
-                        ],
-                    },
-                    TickArrayInfo {
-                        start_tick_index: -32400,
-                        ticks: vec![
-                            build_tick(-32400, 277065331032, -277065331032).take(),
-                            build_tick(-29220, 1330680689, -1330680689).take(),
-                            build_tick(-28860, 6408486554, -6408486554).take(),
-                        ],
-                    },
-                ],
-            );
+            let (amm_config, pool_state, mut tick_array_states, observation_state) =
+                build_swap_param(
+                    tick_current,
+                    60,
+                    sqrt_price_x64,
+                    liquidity,
+                    vec![
+                        TickArrayInfo {
+                            start_tick_index: -36000,
+                            ticks: vec![
+                                build_tick(-32460, 1194569667438, 536061033698).take(),
+                                build_tick(-32520, 790917615645, 790917615645).take(),
+                                build_tick(-32580, 152146472301, 128451145459).take(),
+                                build_tick(-32640, 2625605835354, -1492054447712).take(),
+                            ],
+                        },
+                        TickArrayInfo {
+                            start_tick_index: -32400,
+                            ticks: vec![
+                                build_tick(-32400, 277065331032, -277065331032).take(),
+                                build_tick(-29220, 1330680689, -1330680689).take(),
+                                build_tick(-28860, 6408486554, -6408486554).take(),
+                            ],
+                        },
+                    ],
+                );
 
             // just cross the tickarray boundary(-32460), hasn't reached the next tick array initialized tick
             let (amount_0, amount_1) = swap_internal(
@@ -1437,7 +1532,10 @@ mod swap_test {
             .unwrap();
             println!("amount_0:{},amount_1:{}", amount_0, amount_1);
             assert!(pool_state.borrow().tick_current > tick_current);
-            assert!(pool_state.borrow().tick_current > -32460 && pool_state.borrow().tick_current < -32400);
+            assert!(
+                pool_state.borrow().tick_current > -32460
+                    && pool_state.borrow().tick_current < -32400
+            );
             assert!(pool_state.borrow().sqrt_price_x64 > sqrt_price_x64);
             assert!(pool_state.borrow().liquidity == (liquidity + 536061033698));
             assert!(amount_0 == 22796232052);
@@ -1464,7 +1562,10 @@ mod swap_test {
             .unwrap();
             println!("amount_0:{},amount_1:{}", amount_0, amount_1);
             assert!(pool_state.borrow().tick_current > tick_current);
-            assert!(pool_state.borrow().tick_current > -32400 && pool_state.borrow().tick_current < -29220);
+            assert!(
+                pool_state.borrow().tick_current > -32400
+                    && pool_state.borrow().tick_current < -29220
+            );
             assert!(pool_state.borrow().sqrt_price_x64 > sqrt_price_x64);
             assert!(pool_state.borrow().liquidity == (liquidity - 277065331032));
             assert!(amount_0 == 79023558189);
@@ -1490,7 +1591,10 @@ mod swap_test {
             .unwrap();
             println!("amount_0:{},amount_1:{}", amount_0, amount_1);
             assert!(pool_state.borrow().tick_current > tick_current);
-            assert!(pool_state.borrow().tick_current > -29220 && pool_state.borrow().tick_current < -28860);
+            assert!(
+                pool_state.borrow().tick_current > -29220
+                    && pool_state.borrow().tick_current < -28860
+            );
             assert!(pool_state.borrow().sqrt_price_x64 > sqrt_price_x64);
             assert!(pool_state.borrow().liquidity == (liquidity - 1330680689));
             assert!(amount_0 == 4315086194758);
@@ -1537,7 +1641,10 @@ mod swap_test {
             .unwrap();
             println!("amount_0:{},amount_1:{}", amount_0, amount_1);
             assert!(pool_state.borrow().tick_current < tick_current);
-            assert!(pool_state.borrow().tick_current > -29220 && pool_state.borrow().tick_current < -28860);
+            assert!(
+                pool_state.borrow().tick_current > -29220
+                    && pool_state.borrow().tick_current < -28860
+            );
             assert!(pool_state.borrow().sqrt_price_x64 < sqrt_price_x64);
             assert!(pool_state.borrow().liquidity == (liquidity + 6408486554));
             assert!(amount_0 == 12188240002);
@@ -1579,7 +1686,10 @@ mod swap_test {
             .unwrap();
             println!("amount_0:{},amount_1:{}", amount_0, amount_1);
             assert!(pool_state.borrow().tick_current > tick_current);
-            assert!(pool_state.borrow().tick_current > -32400 && pool_state.borrow().tick_current < -29220);
+            assert!(
+                pool_state.borrow().tick_current > -32400
+                    && pool_state.borrow().tick_current < -29220
+            );
             assert!(pool_state.borrow().sqrt_price_x64 > sqrt_price_x64);
             assert!(pool_state.borrow().liquidity == (liquidity - 277065331032));
             assert!(amount_1 == 12188240002);
@@ -1663,7 +1773,9 @@ mod swap_test {
         println!("amount_0:{},amount_1:{}", amount_0, amount_1);
         assert!(pool_state.borrow().tick_current < tick_current);
         assert!(pool_state.borrow().tick_current == -28860);
-        assert!(pool_state.borrow().sqrt_price_x64 > tick_math::get_sqrt_price_at_tick(-28860).unwrap());
+        assert!(
+            pool_state.borrow().sqrt_price_x64 > tick_math::get_sqrt_price_at_tick(-28860).unwrap()
+        );
         assert!(pool_state.borrow().liquidity == liquidity);
         assert!(amount_0 == 25);
 
@@ -1684,7 +1796,9 @@ mod swap_test {
         println!("amount_0:{},amount_1:{}", amount_0, amount_1);
         assert!(pool_state.borrow().tick_current < tick_current);
         assert!(pool_state.borrow().tick_current == -28861);
-        assert!(pool_state.borrow().sqrt_price_x64 > tick_math::get_sqrt_price_at_tick(-28861).unwrap());
+        assert!(
+            pool_state.borrow().sqrt_price_x64 > tick_math::get_sqrt_price_at_tick(-28861).unwrap()
+        );
         assert!(pool_state.borrow().liquidity == liquidity + 6408486554);
         assert!(amount_0 == 3);
 
@@ -1707,7 +1821,9 @@ mod swap_test {
         .unwrap();
         println!("amount_0:{},amount_1:{}", amount_0, amount_1);
         assert!(pool_state.borrow().tick_current == -28861);
-        assert!(pool_state.borrow().sqrt_price_x64 > tick_math::get_sqrt_price_at_tick(-28861).unwrap());
+        assert!(
+            pool_state.borrow().sqrt_price_x64 > tick_math::get_sqrt_price_at_tick(-28861).unwrap()
+        );
         assert!(pool_state.borrow().liquidity == liquidity);
         assert!(amount_0 == 50);
     }
@@ -1759,7 +1875,10 @@ mod swap_test {
             println!("amount_0:{},amount_1:{}", amount_0, amount_1);
             assert!(pool_state.borrow().tick_current < tick_current);
             assert!(pool_state.borrow().tick_current == -28861);
-            assert!(pool_state.borrow().sqrt_price_x64 == tick_math::get_sqrt_price_at_tick(-28860).unwrap());
+            assert!(
+                pool_state.borrow().sqrt_price_x64
+                    == tick_math::get_sqrt_price_at_tick(-28860).unwrap()
+            );
             assert!(pool_state.borrow().liquidity == liquidity + 6408486554);
             assert!(amount_0 == 27);
 
@@ -1808,7 +1927,10 @@ mod swap_test {
             println!("amount_0:{},amount_1:{}", amount_0, amount_1);
             assert!(pool_state.borrow().tick_current > tick_current);
             assert!(pool_state.borrow().sqrt_price_x64 > sqrt_price_x64);
-            assert!(pool_state.borrow().tick_current > -28860 && pool_state.borrow().tick_current <= -28800);
+            assert!(
+                pool_state.borrow().tick_current > -28860
+                    && pool_state.borrow().tick_current <= -28800
+            );
         }
     }
 
@@ -1845,7 +1967,10 @@ mod swap_test {
                 }],
                 zero_for_one,
             );
-            println!("sum_amount_0: {}, sum_amount_1: {}", sum_amount_0, sum_amount_1,);
+            println!(
+                "sum_amount_0: {}, sum_amount_1: {}",
+                sum_amount_0, sum_amount_1,
+            );
             let amount_specified = 1;
             let result = swap_internal(
                 &amm_config,
@@ -1896,7 +2021,10 @@ mod swap_test {
                 }],
                 zero_for_one,
             );
-            println!("sum_amount_0: {}, sum_amount_1: {}", sum_amount_0, sum_amount_1,);
+            println!(
+                "sum_amount_0: {}, sum_amount_1: {}",
+                sum_amount_0, sum_amount_1,
+            );
             let amount_specified = 1;
             let result = swap_internal(
                 &amm_config,
@@ -1947,7 +2075,10 @@ mod swap_test {
                 }],
                 zero_for_one,
             );
-            println!("sum_amount_0: {}, sum_amount_1: {}", sum_amount_0, sum_amount_1,);
+            println!(
+                "sum_amount_0: {}, sum_amount_1: {}",
+                sum_amount_0, sum_amount_1,
+            );
             let amount_specified = 1;
             let result = swap_internal(
                 &amm_config,
@@ -1997,7 +2128,10 @@ mod swap_test {
                 }],
                 zero_for_one,
             );
-            println!("sum_amount_0: {}, sum_amount_1: {}", sum_amount_0, sum_amount_1,);
+            println!(
+                "sum_amount_0: {}, sum_amount_1: {}",
+                sum_amount_0, sum_amount_1,
+            );
             let amount_specified = 1;
             let result = swap_internal(
                 &amm_config,
@@ -2051,7 +2185,10 @@ mod swap_test {
                 }],
                 zero_for_one,
             );
-            println!("sum_amount_0: {}, sum_amount_1: {}", sum_amount_0, sum_amount_1,);
+            println!(
+                "sum_amount_0: {}, sum_amount_1: {}",
+                sum_amount_0, sum_amount_1,
+            );
             let amount_specified = u64::MAX / 2;
             let result = swap_internal(
                 &amm_config,
@@ -2102,7 +2239,10 @@ mod swap_test {
                 }],
                 zero_for_one,
             );
-            println!("sum_amount_0: {}, sum_amount_1: {}", sum_amount_0, sum_amount_1,);
+            println!(
+                "sum_amount_0: {}, sum_amount_1: {}",
+                sum_amount_0, sum_amount_1,
+            );
             let amount_specified = u64::MAX / 4;
             let result = swap_internal(
                 &amm_config,
@@ -2153,7 +2293,10 @@ mod swap_test {
                 }],
                 zero_for_one,
             );
-            println!("sum_amount_0: {}, sum_amount_1: {}", sum_amount_0, sum_amount_1,);
+            println!(
+                "sum_amount_0: {}, sum_amount_1: {}",
+                sum_amount_0, sum_amount_1,
+            );
             let amount_specified = u64::MAX / 2;
             let result = swap_internal(
                 &amm_config,
@@ -2203,7 +2346,10 @@ mod swap_test {
                 }],
                 zero_for_one,
             );
-            println!("sum_amount_0: {}, sum_amount_1: {}", sum_amount_0, sum_amount_1,);
+            println!(
+                "sum_amount_0: {}, sum_amount_1: {}",
+                sum_amount_0, sum_amount_1,
+            );
             let amount_specified = u64::MAX / 4;
             let result = swap_internal(
                 &amm_config,

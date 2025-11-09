@@ -279,8 +279,10 @@ pub fn open_position<'a, 'b, 'c: 'info, 'info>(
             pool_state.tick_spacing,
         )?;
 
-        let use_tickarray_bitmap_extension = pool_state
-            .is_overflow_default_tickarray_bitmap(vec![tick_array_lower_start_index, tick_array_upper_start_index]);
+        let use_tickarray_bitmap_extension = pool_state.is_overflow_default_tickarray_bitmap(vec![
+            tick_array_lower_start_index,
+            tick_array_upper_start_index,
+        ]);
 
         let LiquidityChangeResult {
             amount_0,
@@ -408,7 +410,8 @@ pub fn add_liquidity<'b, 'c: 'info, 'info>(
         if base_flag.unwrap() {
             // must deduct transfer fee before calculate liquidity
             // because only v2 instruction support token_2022, vault_0_mint must be exist
-            let amount_0_transfer_fee = get_transfer_fee(vault_0_mint.clone().unwrap(), amount_0_max).unwrap();
+            let amount_0_transfer_fee =
+                get_transfer_fee(vault_0_mint.clone().unwrap(), amount_0_max).unwrap();
             *liquidity = liquidity_math::get_liquidity_from_single_amount_0(
                 pool_state.sqrt_price_x64,
                 tick_math::get_sqrt_price_at_tick(tick_lower_index)?,
@@ -425,7 +428,8 @@ pub fn add_liquidity<'b, 'c: 'info, 'info>(
         } else {
             // must deduct transfer fee before calculate liquidity
             // because only v2 instruction support token_2022, vault_1_mint must be exist
-            let amount_1_transfer_fee = get_transfer_fee(vault_1_mint.clone().unwrap(), amount_1_max).unwrap();
+            let amount_1_transfer_fee =
+                get_transfer_fee(vault_1_mint.clone().unwrap(), amount_1_max).unwrap();
             *liquidity = liquidity_math::get_liquidity_from_single_amount_1(
                 pool_state.sqrt_price_x64,
                 tick_math::get_sqrt_price_at_tick(tick_lower_index)?,
@@ -521,11 +525,13 @@ pub fn add_liquidity<'b, 'c: 'info, 'info>(
     let mut amount_0_transfer_fee = 0;
     let mut amount_1_transfer_fee = 0;
     if vault_0_mint.is_some() {
-        amount_0_transfer_fee = get_transfer_inverse_fee(vault_0_mint.clone().unwrap(), amount_0).unwrap();
+        amount_0_transfer_fee =
+            get_transfer_inverse_fee(vault_0_mint.clone().unwrap(), amount_0).unwrap();
         result.amount_0_transfer_fee = amount_0_transfer_fee;
     };
     if vault_1_mint.is_some() {
-        amount_1_transfer_fee = get_transfer_inverse_fee(vault_1_mint.clone().unwrap(), amount_1).unwrap();
+        amount_1_transfer_fee =
+            get_transfer_inverse_fee(vault_1_mint.clone().unwrap(), amount_1).unwrap();
         result.amount_1_transfer_fee = amount_1_transfer_fee;
     }
     emit!(LiquidityCalculateEvent {
@@ -666,8 +672,11 @@ pub fn modify_position(
             tick_upper_state.tick,
             liquidity_delta,
         )?;
-        if pool_state.tick_current >= tick_lower_state.tick && pool_state.tick_current < tick_upper_state.tick {
-            pool_state.liquidity = liquidity_math::add_delta(pool_state.liquidity, liquidity_delta)?;
+        if pool_state.tick_current >= tick_lower_state.tick
+            && pool_state.tick_current < tick_upper_state.tick
+        {
+            pool_state.liquidity =
+                liquidity_math::add_delta(pool_state.liquidity, liquidity_delta)?;
         }
     }
 
@@ -846,8 +855,10 @@ pub fn initialize_token_metadata_extension<'info>(
     };
 
     let mint_data = position_nft_mint.try_borrow_data()?;
-    let mint_state_unpacked = StateWithExtensions::<spl_token_2022::state::Mint>::unpack(&mint_data)?;
-    let new_account_len = mint_state_unpacked.try_get_new_account_len_for_variable_len_extension(&metadata)?;
+    let mint_state_unpacked =
+        StateWithExtensions::<spl_token_2022::state::Mint>::unpack(&mint_data)?;
+    let new_account_len =
+        mint_state_unpacked.try_get_new_account_len_for_variable_len_extension(&metadata)?;
     let new_rent_exempt_lamports = Rent::get()?.minimum_balance(new_account_len);
     let additional_lamports = new_rent_exempt_lamports.saturating_sub(position_nft_mint.lamports());
     // CPI call will borrow the account data

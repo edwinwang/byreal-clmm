@@ -58,7 +58,12 @@ impl DynTickArrayState {
         Self::HEADER_LEN + self.alloc_tick_count as usize * TickState::LEN
     }
 
-    pub fn initialize(&mut self, start_index: i32, tick_spacing: u16, pool_key: Pubkey) -> Result<()> {
+    pub fn initialize(
+        &mut self,
+        start_index: i32,
+        tick_spacing: u16,
+        pool_key: Pubkey,
+    ) -> Result<()> {
         TickUtils::check_is_valid_start_index(start_index, tick_spacing);
         self.start_tick_index = start_index;
         self.pool_id = pool_key;
@@ -70,9 +75,16 @@ impl DynTickArrayState {
     /// Mark a TickState as used in this tick array.
     /// return the offset index of this tick in the TickState array
     pub fn use_one_tick(&mut self, tick_index: i32, tick_spacing: u16) -> Result<u8> {
-        let offset = TickUtils::get_tick_offset_in_tick_array(self.start_tick_index, tick_index, tick_spacing)?;
+        let offset = TickUtils::get_tick_offset_in_tick_array(
+            self.start_tick_index,
+            tick_index,
+            tick_spacing,
+        )?;
 
-        require!(self.tick_offset_index[offset] == 0, ClmmErrorCode::InvalidTickIndex);
+        require!(
+            self.tick_offset_index[offset] == 0,
+            ClmmErrorCode::InvalidTickIndex
+        );
 
         self.alloc_tick_count += 1;
         self.tick_offset_index[offset] = self.alloc_tick_count;
@@ -85,7 +97,11 @@ impl DynTickArrayState {
     /// Get the index of a tick in the TickState array.
     /// The TickState array is placed after the header in the account data.
     pub fn get_tick_index_in_array(&self, tick_index: i32, tick_spacing: u16) -> Result<u8> {
-        let offset = TickUtils::get_tick_offset_in_tick_array(self.start_tick_index, tick_index, tick_spacing)?;
+        let offset = TickUtils::get_tick_offset_in_tick_array(
+            self.start_tick_index,
+            tick_index,
+            tick_spacing,
+        )?;
 
         let tick_state_index = self.tick_offset_index[offset];
         require!(tick_state_index > 0, ClmmErrorCode::InvalidTickIndex);
@@ -99,11 +115,13 @@ impl DynTickArrayState {
         tick_spacing: u16,
         zero_for_one: bool,
     ) -> Result<Option<u8>> {
-        let current_tick_array_start_index = TickUtils::get_array_start_index(current_tick_index, tick_spacing);
+        let current_tick_array_start_index =
+            TickUtils::get_array_start_index(current_tick_index, tick_spacing);
         if current_tick_array_start_index != self.start_tick_index {
             return Ok(None);
         }
-        let mut offset_in_array = (current_tick_index - self.start_tick_index) / i32::from(tick_spacing);
+        let mut offset_in_array =
+            (current_tick_index - self.start_tick_index) / i32::from(tick_spacing);
 
         if zero_for_one {
             while offset_in_array >= 0 {
@@ -163,7 +181,8 @@ impl<'info> DynTickArrayLoader<'info> {
     #[inline(never)]
     pub fn try_from(acc_info: &AccountInfo<'info>) -> Result<Self> {
         if acc_info.owner != &crate::id() {
-            return Err(Error::from(ErrorCode::AccountOwnedByWrongProgram).with_pubkeys((*acc_info.owner, crate::id())));
+            return Err(Error::from(ErrorCode::AccountOwnedByWrongProgram)
+                .with_pubkeys((*acc_info.owner, crate::id())));
         }
         let data: &[u8] = &acc_info.try_borrow_data()?;
         if data.len() < DynTickArrayState::DISCRIMINATOR.len() {
@@ -182,7 +201,8 @@ impl<'info> DynTickArrayLoader<'info> {
     #[inline(never)]
     pub fn try_from_unchecked(acc_info: &AccountInfo<'info>) -> Result<Self> {
         if acc_info.owner != &crate::id() {
-            return Err(Error::from(ErrorCode::AccountOwnedByWrongProgram).with_pubkeys((*acc_info.owner, crate::id())));
+            return Err(Error::from(ErrorCode::AccountOwnedByWrongProgram)
+                .with_pubkeys((*acc_info.owner, crate::id())));
         }
         Ok(Self::new(acc_info.clone()))
     }
@@ -192,7 +212,9 @@ impl<'info> DynTickArrayLoader<'info> {
 impl<'info> DynTickArrayLoader<'info> {
     /// Returns a `RefMut` to the account data structure for reading or writing.
     /// Should only be called once, when the account is being initialized.
-    pub fn load_init<'a>(&'a self) -> Result<(RefMut<'a, DynTickArrayState>, RefMut<'a, [TickState]>)> {
+    pub fn load_init<'a>(
+        &'a self,
+    ) -> Result<(RefMut<'a, DynTickArrayState>, RefMut<'a, [TickState]>)> {
         // AccountInfo api allows you to borrow mut even if the account isn't
         // writable, so add this check for a better dev experience.
         if !self.acc_info.is_writable {
@@ -218,13 +240,15 @@ impl<'info> DynTickArrayLoader<'info> {
         }
 
         let (header, ticks) = RefMut::map_split(data, |data_slice| {
-            let (header_bytes, ticks_bytes) = data_slice.split_at_mut(DynTickArrayState::HEADER_LEN);
+            let (header_bytes, ticks_bytes) =
+                data_slice.split_at_mut(DynTickArrayState::HEADER_LEN);
 
             // 将字节切片转换为对应的可变结构体引用
-            let header: &mut DynTickArrayState = bytemuck::from_bytes_mut(header_bytes[8..].as_mut());
+            let header: &mut DynTickArrayState =
+                bytemuck::from_bytes_mut(header_bytes[8..].as_mut());
 
-            let ticks: &mut [TickState] =
-                bytemuck::try_cast_slice_mut(ticks_bytes).expect("Failed to cast ticks_bytes to TickState slice");
+            let ticks: &mut [TickState] = bytemuck::try_cast_slice_mut(ticks_bytes)
+                .expect("Failed to cast ticks_bytes to TickState slice");
 
             (header, ticks)
         });
@@ -234,7 +258,9 @@ impl<'info> DynTickArrayLoader<'info> {
 
     /// Returns a `RefMut` to the account data structure for reading or writing.
     /// Should only be called once, when the account is being initialized.
-    pub fn load_mut<'a>(&'a self) -> Result<(RefMut<'a, DynTickArrayState>, RefMut<'a, [TickState]>)> {
+    pub fn load_mut<'a>(
+        &'a self,
+    ) -> Result<(RefMut<'a, DynTickArrayState>, RefMut<'a, [TickState]>)> {
         // AccountInfo api allows you to borrow mut even if the account isn't
         // writable, so add this check for a better dev experience.
         if !self.acc_info.is_writable {
@@ -245,13 +271,15 @@ impl<'info> DynTickArrayLoader<'info> {
         let data_len = data.len();
 
         let (header, ticks) = RefMut::map_split(data, |data_slice| {
-            let (header_bytes, ticks_bytes) = data_slice.split_at_mut(DynTickArrayState::HEADER_LEN);
+            let (header_bytes, ticks_bytes) =
+                data_slice.split_at_mut(DynTickArrayState::HEADER_LEN);
 
             // 将字节切片转换为对应的可变结构体引用
-            let header: &mut DynTickArrayState = bytemuck::from_bytes_mut(header_bytes[8..].as_mut());
+            let header: &mut DynTickArrayState =
+                bytemuck::from_bytes_mut(header_bytes[8..].as_mut());
 
-            let ticks: &mut [TickState] =
-                bytemuck::try_cast_slice_mut(ticks_bytes).expect("Failed to cast ticks_bytes to TickState slice");
+            let ticks: &mut [TickState] = bytemuck::try_cast_slice_mut(ticks_bytes)
+                .expect("Failed to cast ticks_bytes to TickState slice");
 
             (header, ticks)
         });
@@ -282,8 +310,8 @@ impl<'info> DynTickArrayLoader<'info> {
             // 将字节切片转换为对应的可变结构体引用
             let header: &DynTickArrayState = bytemuck::from_bytes(header_bytes[8..].as_ref());
 
-            let ticks: &[TickState] =
-                bytemuck::try_cast_slice(ticks_bytes).expect("Failed to cast ticks_bytes to TickState slice");
+            let ticks: &[TickState] = bytemuck::try_cast_slice(ticks_bytes)
+                .expect("Failed to cast ticks_bytes to TickState slice");
 
             (header, ticks)
         });
