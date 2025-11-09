@@ -54,16 +54,16 @@ impl TickArrayState {
         &mut self,
         tick_index: i32,
         tick_spacing: u16,
-        tick_state: TickState,
+        tick_state: &TickState,
     ) -> Result<()> {
         let offset_in_array = self.get_tick_offset_in_array(tick_index, tick_spacing)?;
-        self.ticks[offset_in_array] = tick_state;
+        self.ticks[offset_in_array] = *tick_state;
         self.recent_epoch = get_recent_epoch()?;
         Ok(())
     }
 
     /// Get tick's offset in current tick array, tick must be include in tick array， otherwise throw an error
-    pub fn get_tick_offset_in_array(self, tick_index: i32, tick_spacing: u16) -> Result<usize> {
+    pub fn get_tick_offset_in_array(&self, tick_index: i32, tick_spacing: u16) -> Result<usize> {
         let start_tick_index = TickUtils::get_array_start_index(tick_index, tick_spacing);
         require_eq!(
             start_tick_index,
@@ -162,12 +162,12 @@ pub mod tick_array_test {
     use super::*;
     use std::cell::RefCell;
 
-    pub struct TickArrayInfo {
+    pub struct FixTickArrayInfo {
         pub start_tick_index: i32,
         pub ticks: Vec<TickState>,
     }
 
-    pub fn build_tick_array(
+    pub fn build_fix_tick_array(
         start_index: i32,
         tick_spacing: u16,
         initialized_tick_offsets: Vec<usize>,
@@ -187,7 +187,7 @@ pub mod tick_array_test {
         RefCell::new(new_tick_array)
     }
 
-    pub fn build_tick_array_with_tick_states(
+    pub fn build_fix_tick_array_with_tick_states(
         pool_id: Pubkey,
         start_index: i32,
         tick_spacing: u16,
@@ -268,7 +268,7 @@ pub mod tick_array_test {
         #[test]
         fn next_tick_arrary_start_index_test() {
             let tick_spacing = 15;
-            let tick_array_ref = build_tick_array(-1800, tick_spacing, vec![]);
+            let tick_array_ref = build_fix_tick_array(-1800, tick_spacing, vec![]);
             // zero_for_one, next tickarray start_index < current
             assert_eq!(
                 -2700,
@@ -289,7 +289,7 @@ pub mod tick_array_test {
         fn get_tick_offset_in_array_test() {
             let tick_spacing = 4;
             // tick range [960, 1196]
-            let tick_array_ref = build_tick_array(960, tick_spacing, vec![]);
+            let tick_array_ref = build_fix_tick_array(960, tick_spacing, vec![]);
 
             // not in tickarray
             assert_eq!(
@@ -337,7 +337,7 @@ pub mod tick_array_test {
         fn first_initialized_tick_test() {
             let tick_spacing = 15;
             // initialized ticks[-300,-15]
-            let tick_array_ref = build_tick_array(-900, tick_spacing, vec![40, 59]);
+            let tick_array_ref = build_fix_tick_array(-900, tick_spacing, vec![40, 59]);
             let mut tick_array = tick_array_ref.borrow_mut();
             // one_for_zero, the price increase, tick from small to large
             let tick = tick_array.first_initialized_tick(false).unwrap().tick;
@@ -350,7 +350,7 @@ pub mod tick_array_test {
         #[test]
         fn next_initialized_tick_when_tick_is_positive() {
             // init tick_index [0,30,105]
-            let tick_array_ref = build_tick_array(0, 15, vec![0, 2, 7]);
+            let tick_array_ref = build_fix_tick_array(0, 15, vec![0, 2, 7]);
             let mut tick_array = tick_array_ref.borrow_mut();
 
             // test zero_for_one
@@ -389,7 +389,7 @@ pub mod tick_array_test {
         #[test]
         fn next_initialized_tick_when_tick_is_negative() {
             // init tick_index [-900,-870,-795]
-            let tick_array_ref = build_tick_array(-900, 15, vec![0, 2, 7]);
+            let tick_array_ref = build_fix_tick_array(-900, 15, vec![0, 2, 7]);
             let mut tick_array = tick_array_ref.borrow_mut();
 
             // test zero for one

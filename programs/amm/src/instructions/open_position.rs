@@ -209,8 +209,8 @@ pub fn open_position<'a, 'b, 'c: 'info, 'info>(
     position_nft_account: &'b AccountInfo<'info>,
     metadata_account: Option<&'b UncheckedAccount<'info>>,
     pool_state_loader: &'b AccountLoader<'info, PoolState>,
-    tick_array_lower_loader: &'b UncheckedAccount<'info>,
-    tick_array_upper_loader: &'b UncheckedAccount<'info>,
+    tick_array_lower_account: &'b UncheckedAccount<'info>,
+    tick_array_upper_account: &'b UncheckedAccount<'info>,
     personal_position: &'b mut Box<Account<'info, PersonalPositionState>>,
     token_account_0: &'b AccountInfo<'info>,
     token_account_1: &'b AccountInfo<'info>,
@@ -261,7 +261,7 @@ pub fn open_position<'a, 'b, 'c: 'info, 'info>(
         // the problem is variable scope, tick_array_lower_loader not exit to save the discriminator while build tick_array_upper_loader.
         let tick_array_lower_loader = TickArrayContainer::get_or_create_tick_array(
             payer.to_account_info(),
-            tick_array_lower_loader.to_account_info(),
+            tick_array_lower_account.to_account_info(),
             system_program.to_account_info(),
             &pool_state_loader,
             tick_array_lower_start_index,
@@ -271,7 +271,7 @@ pub fn open_position<'a, 'b, 'c: 'info, 'info>(
 
         let tick_array_upper_loader = TickArrayContainer::get_or_create_tick_array(
             payer.to_account_info(),
-            tick_array_upper_loader.to_account_info(),
+            tick_array_upper_account.to_account_info(),
             system_program.to_account_info(),
             &pool_state_loader,
             tick_array_upper_start_index,
@@ -452,13 +452,17 @@ pub fn add_liquidity<'b, 'c: 'info, 'info>(
     require_keys_eq!(tick_array_upper_loader.get_pool_id()?, pool_state.key());
 
     // get tick_state
-    let mut tick_lower_state = *tick_array_lower_loader
-        .get_ref_mut()?
-        .get_tick_state_mut(tick_lower_index, pool_state.tick_spacing)?;
+    let mut tick_lower_state = Box::new(
+        *tick_array_lower_loader
+            .get_ref_mut()?
+            .get_tick_state_mut(tick_lower_index, pool_state.tick_spacing)?,
+    );
 
-    let mut tick_upper_state = *tick_array_upper_loader
-        .get_ref_mut()?
-        .get_tick_state_mut(tick_upper_index, pool_state.tick_spacing)?;
+    let mut tick_upper_state = Box::new(
+        *tick_array_upper_loader
+            .get_ref_mut()?
+            .get_tick_state_mut(tick_upper_index, pool_state.tick_spacing)?,
+    );
 
     // If the tickState is not initialized, assign a value to tickState.tick here
     if tick_lower_state.tick == 0 {
@@ -480,12 +484,12 @@ pub fn add_liquidity<'b, 'c: 'info, 'info>(
     tick_array_lower_loader.get_ref_mut()?.update_tick_state(
         tick_lower_index,
         pool_state.tick_spacing,
-        tick_lower_state,
+        &tick_lower_state,
     )?;
     tick_array_upper_loader.get_ref_mut()?.update_tick_state(
         tick_upper_index,
         pool_state.tick_spacing,
-        tick_upper_state,
+        &tick_upper_state,
     )?;
 
     if result.tick_lower_flipped {

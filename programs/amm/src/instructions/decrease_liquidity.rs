@@ -396,12 +396,16 @@ pub fn burn_liquidity<'c: 'info, 'info>(
     let liquidity_before = pool_state.liquidity;
 
     // get tick_state
-    let mut tick_lower_state = *tick_array_lower_loader
-        .get_ref_mut()?
-        .get_tick_state_mut(tick_lower_index, pool_state.tick_spacing)?;
-    let mut tick_upper_state = *tick_array_upper_loader
-        .get_ref_mut()?
-        .get_tick_state_mut(tick_upper_index, pool_state.tick_spacing)?;
+    let mut tick_lower_state = Box::new(
+        *tick_array_lower_loader
+            .get_ref_mut()?
+            .get_tick_state_mut(tick_lower_index, pool_state.tick_spacing)?,
+    );
+    let mut tick_upper_state = Box::new(
+        *tick_array_upper_loader
+            .get_ref_mut()?
+            .get_tick_state_mut(tick_upper_index, pool_state.tick_spacing)?,
+    );
     let clock = Clock::get()?;
 
     let result = modify_position(
@@ -416,12 +420,12 @@ pub fn burn_liquidity<'c: 'info, 'info>(
     tick_array_lower_loader.get_ref_mut()?.update_tick_state(
         tick_lower_index,
         pool_state.tick_spacing,
-        tick_lower_state,
+        &tick_lower_state,
     )?;
     tick_array_upper_loader.get_ref_mut()?.update_tick_state(
         tick_upper_index,
         pool_state.tick_spacing,
-        tick_upper_state,
+        &tick_upper_state,
     )?;
 
     if result.tick_lower_flipped {

@@ -4,7 +4,7 @@ use anchor_lang::{prelude::*, system_program};
 use arrayref::array_ref;
 use std::cell::RefMut;
 use std::mem;
-use std::ops::{Deref, DerefMut};
+use std::ops::DerefMut;
 
 use crate::error::ErrorCode as ClmmErrorCode;
 use crate::states::{
@@ -14,6 +14,7 @@ use crate::states::{
 use crate::util::*;
 
 /// Unified TickArray account view container
+#[derive(Clone)]
 pub enum TickArrayContainer<'info> {
     Fixed(AccountLoad<'info, TickArrayState>),
     Dynamic(DynTickArrayLoader<'info>),
@@ -34,7 +35,7 @@ impl TickArrayContainer<'_> {
             }
 
             TickArrayContainer::Dynamic(dyn_loader) => {
-                let (dyn_tick_header, dyn_tick_states) = dyn_loader.load_mut()?;
+                let (dyn_tick_header, dyn_tick_states) = dyn_loader.load_mut(false)?;
                 Ok(TickArrayContainerRefMut::Dynamic((
                     dyn_tick_header,
                     dyn_tick_states,
@@ -120,7 +121,7 @@ impl<'info> TickArrayContainer<'info> {
             ClmmErrorCode::TickAndSpacingNotMatch
         );
 
-        let tick_array_container = if tick_array_account_info.owner == &system_program::ID {
+        if tick_array_account_info.owner == &system_program::ID {
             let tick_array_state_loader = Self::create_dyn_tick_array_account(
                 payer,
                 tick_array_account_info,
@@ -130,7 +131,7 @@ impl<'info> TickArrayContainer<'info> {
                 access_tick_index,
                 tick_spacing,
             )?;
-            TickArrayContainer::Dynamic(tick_array_state_loader)
+            return Ok(TickArrayContainer::Dynamic(tick_array_state_loader));
         } else {
             // If the account is already initialized, just load it.
             // check account owner first
@@ -138,10 +139,11 @@ impl<'info> TickArrayContainer<'info> {
                 return Err(Error::from(ErrorCode::AccountOwnedByWrongProgram)
                     .with_pubkeys((*tick_array_account_info.owner, crate::id())));
             }
-            // then check discriminator to decide which type of tick array account it is
-            let disc_bytes = Self::read_discriminator(&tick_array_account_info)?;
 
-            let tick_array_container = if disc_bytes == *TickArrayState::DISCRIMINATOR {
+            if Self::is_match_discriminator(
+                &tick_array_account_info,
+                TickArrayState::DISCRIMINATOR,
+            )? {
                 // fixed tick array account
                 let tick_array_loader = Self::check_and_load_fix_tick_array_account(
                     tick_array_account_info,
@@ -151,8 +153,11 @@ impl<'info> TickArrayContainer<'info> {
                     tick_spacing,
                 )?;
 
-                TickArrayContainer::Fixed(tick_array_loader)
-            } else if disc_bytes == *DynTickArrayState::DISCRIMINATOR {
+                return Ok(TickArrayContainer::Fixed(tick_array_loader));
+            } else if Self::is_match_discriminator(
+                &tick_array_account_info,
+                DynTickArrayState::DISCRIMINATOR,
+            )? {
                 // dynamic tick array account
                 let dyn_tick_array_loader = Self::check_and_load_dyn_tick_array_account(
                     payer,
@@ -164,15 +169,11 @@ impl<'info> TickArrayContainer<'info> {
                     tick_spacing,
                 )?;
 
-                TickArrayContainer::Dynamic(dyn_tick_array_loader)
+                return Ok(TickArrayContainer::Dynamic(dyn_tick_array_loader));
             } else {
                 return Err(ErrorCode::AccountDiscriminatorMismatch.into());
             };
-
-            tick_array_container
         };
-
-        Ok(tick_array_container)
     }
 
     /// Try to load a TickArrayState of type AccountLoader or DynTickArrayLoader from tickarray account info
@@ -188,61 +189,81 @@ impl<'info> TickArrayContainer<'info> {
             return Err(Error::from(ErrorCode::AccountOwnedByWrongProgram)
                 .with_pubkeys((*tick_array_account_info.owner, crate::id())));
         }
-        let disc_bytes = Self::read_discriminator(&tick_array_account_info)?;
 
-        let tick_array_container = if disc_bytes == *TickArrayState::DISCRIMINATOR {
-            // fixed tick array account
-            let tick_array_loader =
-                AccountLoad::<TickArrayState>::try_from(tick_array_account_info)?;
-
-            // check if access_tick_index is in this tick array
-            {
-                let tick_array = tick_array_loader.load()?;
-                TickUtils::check_tick_array_start_index(
-                    tick_array.start_tick_index,
-                    access_tick_index,
-                    tick_spacing,
-                )?;
-
-                let offset_in_array = tick_array
-                    .deref()
-                    .get_tick_offset_in_array(access_tick_index, tick_spacing)?;
-
-                require!(
-                    tick_array.ticks[offset_in_array].tick != 0,
-                    ClmmErrorCode::InvalidTickIndex
-                );
-            }
-
-            TickArrayContainer::Fixed(tick_array_loader)
-        } else if disc_bytes == *DynTickArrayState::DISCRIMINATOR {
-            // dynamic tick array account
-            let dyn_tick_array_loader = DynTickArrayLoader::try_from(tick_array_account_info)?;
-
-            // check if access_tick_index is in this tick array
-            {
-                let (dyn_tick_header, dyn_tick_states) = dyn_tick_array_loader.load()?;
-                TickUtils::check_tick_array_start_index(
-                    dyn_tick_header.start_tick_index,
-                    access_tick_index,
-                    tick_spacing,
-                )?;
-
-                let offset_in_array =
-                    dyn_tick_header.get_tick_index_in_array(access_tick_index, tick_spacing)?;
-
-                require!(
-                    dyn_tick_states[offset_in_array as usize].tick != 0,
-                    ClmmErrorCode::InvalidTickIndex
-                );
-            }
-
-            TickArrayContainer::Dynamic(dyn_tick_array_loader)
+        if Self::is_match_discriminator(tick_array_account_info, TickArrayState::DISCRIMINATOR)? {
+            Self::validate_and_load_fixed(tick_array_account_info, access_tick_index, tick_spacing)
+        } else if Self::is_match_discriminator(
+            tick_array_account_info,
+            DynTickArrayState::DISCRIMINATOR,
+        )? {
+            Self::validate_and_load_dynamic(
+                tick_array_account_info,
+                access_tick_index,
+                tick_spacing,
+            )
         } else {
-            return Err(ErrorCode::AccountDiscriminatorMismatch.into());
-        };
+            Err(ErrorCode::AccountDiscriminatorMismatch.into())
+        }
+    }
 
-        Ok(tick_array_container)
+    #[inline(never)]
+    fn validate_and_load_fixed(
+        tick_array_account_info: &AccountInfo<'info>,
+        access_tick_index: i32,
+        tick_spacing: u16,
+    ) -> Result<TickArrayContainer<'info>> {
+        // fixed tick array account
+        let tick_array_loader = AccountLoad::<TickArrayState>::try_from(tick_array_account_info)?;
+
+        // check if access_tick_index is in this tick array
+        {
+            let tick_array = tick_array_loader.load()?;
+            TickUtils::check_tick_array_start_index(
+                tick_array.start_tick_index,
+                access_tick_index,
+                tick_spacing,
+            )?;
+
+            let offset_in_array =
+                tick_array.get_tick_offset_in_array(access_tick_index, tick_spacing)?;
+
+            require!(
+                tick_array.ticks[offset_in_array].tick != 0,
+                ClmmErrorCode::InvalidTickIndex
+            );
+        }
+
+        Ok(TickArrayContainer::Fixed(tick_array_loader))
+    }
+
+    #[inline(never)]
+    fn validate_and_load_dynamic(
+        tick_array_account_info: &AccountInfo<'info>,
+        access_tick_index: i32,
+        tick_spacing: u16,
+    ) -> Result<TickArrayContainer<'info>> {
+        // dynamic tick array account
+        let dyn_tick_array_loader = DynTickArrayLoader::try_from(tick_array_account_info)?;
+
+        // check if access_tick_index is in this tick array
+        {
+            let (dyn_tick_header, dyn_tick_states) = dyn_tick_array_loader.load()?;
+            TickUtils::check_tick_array_start_index(
+                dyn_tick_header.start_tick_index,
+                access_tick_index,
+                tick_spacing,
+            )?;
+
+            let offset_in_array =
+                dyn_tick_header.get_tick_index_in_array(access_tick_index, tick_spacing)?;
+
+            require!(
+                dyn_tick_states[offset_in_array as usize].tick != 0,
+                ClmmErrorCode::InvalidTickIndex
+            );
+        }
+
+        Ok(TickArrayContainer::Dynamic(dyn_tick_array_loader))
     }
 
     /// Try to load a TickArrayState of type AccountLoader or DynTickArrayLoader from tickarray account info without checking access_tick_index
@@ -255,36 +276,41 @@ impl<'info> TickArrayContainer<'info> {
             return Err(Error::from(ErrorCode::AccountOwnedByWrongProgram)
                 .with_pubkeys((*tick_array_account_info.owner, crate::id())));
         }
-        let disc_bytes = Self::read_discriminator(&tick_array_account_info)?;
 
-        let tick_array_container = if disc_bytes == *TickArrayState::DISCRIMINATOR {
+        if Self::is_match_discriminator(tick_array_account_info, TickArrayState::DISCRIMINATOR)? {
             // fixed tick array account
             let tick_array_loader =
                 AccountLoad::<TickArrayState>::try_from(tick_array_account_info)?;
 
-            TickArrayContainer::Fixed(tick_array_loader)
-        } else if disc_bytes == *DynTickArrayState::DISCRIMINATOR {
+            Ok(TickArrayContainer::Fixed(tick_array_loader))
+        } else if Self::is_match_discriminator(
+            tick_array_account_info,
+            DynTickArrayState::DISCRIMINATOR,
+        )? {
             // dynamic tick array account
             let dyn_tick_array_loader = DynTickArrayLoader::try_from(tick_array_account_info)?;
 
-            TickArrayContainer::Dynamic(dyn_tick_array_loader)
+            Ok(TickArrayContainer::Dynamic(dyn_tick_array_loader))
         } else {
             return Err(ErrorCode::AccountDiscriminatorMismatch.into());
-        };
-
-        Ok(tick_array_container)
+        }
     }
 
     /// Read the discriminator of an account
-    pub fn read_discriminator(acc_info: &AccountInfo<'info>) -> Result<[u8; 8]> {
+    pub fn is_match_discriminator(
+        acc_info: &AccountInfo<'info>,
+        discriminator: &[u8],
+    ) -> Result<bool> {
         let data: &[u8] = &acc_info.try_borrow_data()?;
         if data.len() < 8 {
             return Err(ErrorCode::AccountDiscriminatorNotFound.into());
         }
 
-        let disc_bytes = array_ref![data, 0, 8];
-
-        Ok(*disc_bytes)
+        if data[0..8] == discriminator[..] {
+            Ok(true)
+        } else {
+            Ok(false)
+        }
     }
 }
 
@@ -300,6 +326,14 @@ impl<'info> TickArrayContainer<'info> {
         access_tick_index: i32,
         tick_spacing: u16,
     ) -> Result<DynTickArrayLoader<'info>> {
+        #[cfg(all(feature = "localnet", feature = "enable-log"))]
+        msg!(
+            "create_dyn_tick_array_account, tick_array_start_index: {}, access_tick_index:{}, tick_spacing: {}",
+            tick_array_start_index,
+            access_tick_index,
+            tick_spacing
+        );
+
         // If the account is not initialized, create it. check PDA first
         let (expect_pda_address, bump) = Pubkey::find_program_address(
             &[
@@ -353,6 +387,14 @@ impl<'info> TickArrayContainer<'info> {
         access_tick_index: i32,
         tick_spacing: u16,
     ) -> Result<AccountLoad<'info, TickArrayState>> {
+        #[cfg(all(feature = "localnet", feature = "enable-log"))]
+        msg!(
+            "check_and_load_fix_tick_array_account, tick_array_start_index: {}, access_tick_index:{}, tick_spacing: {}",
+            tick_array_start_index,
+            access_tick_index,
+            tick_spacing
+        );
+
         let tick_array_loader = AccountLoad::<TickArrayState>::try_from(&tick_array_account_info)?;
 
         {
@@ -395,13 +437,22 @@ impl<'info> TickArrayContainer<'info> {
         access_tick_index: i32,
         tick_spacing: u16,
     ) -> Result<DynTickArrayLoader<'info>> {
+        #[cfg(all(feature = "localnet", feature = "enable-log"))]
+        msg!(
+            "check_and_load_dyn_tick_array_account, tick_array_account: {}, tick_array_start_index: {}, access_tick_index:{}, tick_spacing: {}",
+            tick_array_account_info.key.to_string(),
+            tick_array_start_index,
+            access_tick_index,
+            tick_spacing
+        );
+
         // dynamic tick array account
         let dyn_tick_array_loader = DynTickArrayLoader::try_from(&tick_array_account_info)?;
 
         let mut need_add_one_more_tick_state = false;
         let tick_array_account_size;
         {
-            let (dyn_tick_header, dyn_tick_states) = dyn_tick_array_loader.load()?;
+            let (dyn_tick_header, _) = dyn_tick_array_loader.load()?;
             require_eq!(
                 dyn_tick_header.start_tick_index,
                 tick_array_start_index,
@@ -419,7 +470,8 @@ impl<'info> TickArrayContainer<'info> {
                 access_tick_index,
                 tick_spacing,
             )?;
-            if dyn_tick_states[offset_in_array].tick == 0 {
+            // !offset_in_array, 实际上是原始 array 中的索引位置，还需要转换一次，才能是 dyn-tick-array 中的索引位置
+            if dyn_tick_header.tick_offset_index[offset_in_array] == 0 {
                 // we need to initialize this tick state, so has to add one more tick state
                 need_add_one_more_tick_state = true;
             }
@@ -439,9 +491,12 @@ impl<'info> TickArrayContainer<'info> {
 
             let new_dyn_tick_array_loader = DynTickArrayLoader::try_from(&tick_array_account_info)?;
             {
-                let (mut dyn_tick_header, _) = new_dyn_tick_array_loader.load_mut()?;
+                let (mut dyn_tick_header, mut dyn_tick_state) =
+                    new_dyn_tick_array_loader.load_mut(true)?;
 
-                dyn_tick_header.use_one_tick(access_tick_index, tick_spacing)?;
+                let array_index = dyn_tick_header.use_one_tick(access_tick_index, tick_spacing)?;
+                dyn_tick_state[array_index as usize].tick = access_tick_index;
+                // !这里只是开辟 TickState 空间，并在header中标记该tick已被使用，具体的 TickState 初始化留到后续使用时进行
             }
 
             Ok(new_dyn_tick_array_loader)
@@ -602,7 +657,7 @@ impl TickArrayContainerRefMut<'_> {
         &mut self,
         tick_index: i32,
         tick_spacing: u16,
-        tick_state: TickState,
+        tick_state: &TickState,
     ) -> Result<()> {
         match self {
             TickArrayContainerRefMut::Fixed(tick_array) => {
@@ -610,7 +665,7 @@ impl TickArrayContainerRefMut<'_> {
             }
             TickArrayContainerRefMut::Dynamic((header, states)) => {
                 let index = header.get_tick_index_in_array(tick_index, tick_spacing)? as usize;
-                states[index] = tick_state;
+                states[index] = *tick_state;
                 header.recent_epoch = get_recent_epoch()?;
 
                 Ok(())
@@ -655,6 +710,7 @@ impl TickArrayContainerRefMut<'_> {
             }
             TickArrayContainerRefMut::Dynamic((header, states)) => {
                 let index = header.next_initialized_tick_index(
+                    &states,
                     current_tick_index,
                     tick_spacing,
                     zero_for_one,
@@ -676,10 +732,41 @@ impl TickArrayContainerRefMut<'_> {
                 tick_array.first_initialized_tick(zero_for_one)
             }
             TickArrayContainerRefMut::Dynamic((header, states)) => {
-                let index = header.first_initialized_tick_index(zero_for_one)? as usize;
+                let index = header.first_initialized_tick_index(&states, zero_for_one)? as usize;
 
                 Ok(&mut states[index])
             }
         }
+    }
+}
+
+#[cfg(test)]
+mod tick_array_container_tests {
+    use super::*;
+    use crate::libraries::mock_anchor_account_info_v3;
+    use anchor_lang::solana_program::pubkey::Pubkey;
+
+    #[test]
+    fn test_is_match_discriminator() {
+        let key = Pubkey::new_unique();
+        let owner = crate::id();
+
+        let dyn_tick_header = DynTickArrayState::default();
+        let (account_info, _lamports_box, _data_box) =
+            mock_anchor_account_info_v3(&key, &owner, &dyn_tick_header, None);
+
+        let is_dyn = TickArrayContainer::is_match_discriminator(
+            &account_info,
+            DynTickArrayState::DISCRIMINATOR,
+        )
+        .unwrap();
+        assert!(is_dyn);
+
+        let is_fixed = TickArrayContainer::is_match_discriminator(
+            &account_info,
+            TickArrayState::DISCRIMINATOR,
+        )
+        .unwrap();
+        assert!(!is_fixed);
     }
 }
