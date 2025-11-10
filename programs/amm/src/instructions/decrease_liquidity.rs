@@ -154,6 +154,17 @@ pub fn decrease_liquidity<'a, 'b, 'c: 'info, 'info>(
     //     let memp_program = accounts.memo_program.as_ref().unwrap().to_account_info();
     //     invoke_memo_instruction(DECREASE_MEMO_MSG, memp_program)?;
     // }
+
+    // check tick array pool id
+    require_keys_eq!(
+        tick_array_lower_loader.get_pool_id()?,
+        pool_state_loader.key()
+    );
+    require_keys_eq!(
+        tick_array_upper_loader.get_pool_id()?,
+        pool_state_loader.key()
+    );
+
     assert!(liquidity <= personal_position.liquidity);
     let liquidity_before;
     let pool_sqrt_price_x64;

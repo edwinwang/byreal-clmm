@@ -77,6 +77,12 @@ impl DynTickArrayState {
     /// Mark a TickState as used in this tick array.
     /// return the index of this tick in the DynTickStateArray
     pub fn use_one_tick(&mut self, tick_index: i32, tick_spacing: u16) -> Result<u8> {
+        require_eq!(
+            TickUtils::get_array_start_index(tick_index, tick_spacing),
+            self.start_tick_index,
+            ClmmErrorCode::InvalidTickIndex
+        );
+
         let offset = TickUtils::get_tick_offset_in_tick_array(
             self.start_tick_index,
             tick_index,
@@ -100,6 +106,12 @@ impl DynTickArrayState {
     /// The TickState array is placed after the header in the account data.
     /// function like tick_array.get_tick_offset_in_array(tick_index, tick_spacing)
     pub fn get_tick_index_in_array(&self, tick_index: i32, tick_spacing: u16) -> Result<u8> {
+        require_eq!(
+            TickUtils::get_array_start_index(tick_index, tick_spacing),
+            self.start_tick_index,
+            ClmmErrorCode::InvalidTickIndex
+        );
+
         let offset = TickUtils::get_tick_offset_in_tick_array(
             self.start_tick_index,
             tick_index,
@@ -154,7 +166,7 @@ impl DynTickArrayState {
         Ok(None)
     }
 
-    /// Base on swap directioin, return the first initialized tick in the tick array.
+    /// Base on swap directioin, return the first initialized tick(tick-index in dyn-tick-array) in the tick array.
     pub fn first_initialized_tick_index(
         &self,
         tick_state_slice: &[TickState],
@@ -303,6 +315,17 @@ impl<'info> DynTickArrayLoader<'info> {
         let data = self.acc_info.try_borrow_mut_data()?;
         let data_len = data.len();
 
+        // check discriminator
+        {
+            if data_len < DynTickArrayState::DISCRIMINATOR.len() {
+                return Err(ErrorCode::AccountDiscriminatorNotFound.into());
+            }
+            let disc_bytes = array_ref![data, 0, 8];
+            if disc_bytes != &DynTickArrayState::DISCRIMINATOR {
+                return Err(ErrorCode::AccountDiscriminatorMismatch.into());
+            }
+        }
+
         let (header, ticks) = RefMut::map_split(data, |data_slice| {
             let (header_bytes, ticks_bytes) =
                 data_slice.split_at_mut(DynTickArrayState::HEADER_LEN);
@@ -331,13 +354,16 @@ impl<'info> DynTickArrayLoader<'info> {
     pub fn load<'a>(&'a self) -> Result<(Ref<'a, DynTickArrayState>, Ref<'a, [TickState]>)> {
         let data = self.acc_info.try_borrow_data()?;
         let data_len = data.len();
-        if data_len < DynTickArrayState::DISCRIMINATOR.len() {
-            return Err(ErrorCode::AccountDiscriminatorNotFound.into());
-        }
 
-        let disc_bytes = array_ref![data, 0, 8];
-        if disc_bytes != &DynTickArrayState::DISCRIMINATOR {
-            return Err(ErrorCode::AccountDiscriminatorMismatch.into());
+        {
+            if data_len < DynTickArrayState::DISCRIMINATOR.len() {
+                return Err(ErrorCode::AccountDiscriminatorNotFound.into());
+            }
+
+            let disc_bytes = array_ref![data, 0, 8];
+            if disc_bytes != &DynTickArrayState::DISCRIMINATOR {
+                return Err(ErrorCode::AccountDiscriminatorMismatch.into());
+            }
         }
 
         let (header, ticks) = Ref::map_split(data, |data_slice| {
