@@ -88,7 +88,8 @@ pub fn realloc_account_if_needed<'a>(
     }
 
     // Reallocate more space.
-    AccountInfo::resize(target_account, new_account_space)?;
+    // AccountInfo::resize(target_account, new_account_space)?;
+    AccountInfo::realloc(target_account, new_account_space, false)?;
 
     // If more lamports are needed, transfer them to the account.
     let rent_exempt_lamports = Rent::get()
