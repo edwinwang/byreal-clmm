@@ -48,8 +48,10 @@ pub struct SwapSingle<'info> {
     /// SPL program for token transfers
     pub token_program: Program<'info, Token>,
 
-    #[account(mut, constraint = tick_array.load()?.pool_id == pool_state.key())]
-    pub tick_array: AccountLoader<'info, TickArrayState>,
+    // constraint = tick_array.load()?.pool_id == pool_state.key()
+    /// CHECK: The tick_array account of current or next initialized
+    #[account(mut)]
+    pub tick_array: UncheckedAccount<'info>,
 }
 
 pub struct SwapAccounts<'b, 'info> {
@@ -78,7 +80,7 @@ pub struct SwapAccounts<'b, 'info> {
     pub pool_state: &'b mut AccountLoader<'info, PoolState>,
 
     /// The tick_array account of current or next initialized
-    pub tick_array_state: &'b mut AccountLoader<'info, TickArrayState>,
+    pub tick_array_state: &'b TickArrayContainer<'info>,
 
     /// The program account for the oracle observation
     pub observation_state: &'b mut AccountLoader<'info, ObservationState>,
@@ -128,7 +130,7 @@ struct StepComputations {
 pub fn swap_internal<'b, 'info>(
     amm_config: &AmmConfig,
     pool_state: &mut RefMut<PoolState>,
-    tick_array_states: &mut VecDeque<RefMut<TickArrayState>>,
+    tick_array_states: &mut VecDeque<TickArrayContainerRefMut<'info>>,
     observation_state: &mut RefMut<ObservationState>,
     tickarray_bitmap_extension: &Option<TickArrayBitmapExtension>,
     amount_specified: u64,
@@ -182,7 +184,7 @@ pub fn swap_internal<'b, 'info>(
     let mut tick_array_current = tick_array_states.pop_front().unwrap();
     // find the first active tick array account
     for _ in 0..tick_array_states.len() {
-        if tick_array_current.start_tick_index == current_valid_tick_array_start_index {
+        if tick_array_current.get_start_tick_index() == current_valid_tick_array_start_index {
             break;
         }
         tick_array_current = tick_array_states
@@ -190,10 +192,10 @@ pub fn swap_internal<'b, 'info>(
             .ok_or(ErrorCode::NotEnoughTickArrayAccount)?;
     }
     // check the first tick_array account is owned by the pool
-    require_keys_eq!(tick_array_current.pool_id, pool_state.key());
+    require_keys_eq!(tick_array_current.get_pool_id(), pool_state.key());
     // check first tick array account is correct
     require_eq!(
-        tick_array_current.start_tick_index,
+        tick_array_current.get_start_tick_index(),
         current_valid_tick_array_start_index,
         ErrorCode::InvalidFirstTickArrayAccount
     );
@@ -250,12 +252,14 @@ pub fn swap_internal<'b, 'info>(
                 return err!(ErrorCode::LiquidityInsufficient);
             }
 
-            while tick_array_current.start_tick_index != next_initialized_tickarray_index.unwrap() {
+            while tick_array_current.get_start_tick_index()
+                != next_initialized_tickarray_index.unwrap()
+            {
                 tick_array_current = tick_array_states
                     .pop_front()
                     .ok_or(ErrorCode::NotEnoughTickArrayAccount)?;
                 // check the tick_array account is owned by the pool
-                require_keys_eq!(tick_array_current.pool_id, pool_state.key());
+                require_keys_eq!(tick_array_current.get_pool_id(), pool_state.key());
             }
             current_valid_tick_array_start_index = next_initialized_tickarray_index.unwrap();
 
@@ -289,6 +293,42 @@ pub fn swap_internal<'b, 'info>(
             require_gte!(step.sqrt_price_next_x64, step.sqrt_price_start_x64);
             require_gte!(target_price, step.sqrt_price_start_x64);
         }
+
+        let mut real_trade_fee_rate = amm_config.trade_fee_rate;
+        if pool_state.is_decay_fee_enabled() {
+            let mut decay_trade_fee_rate = 0u32;
+            if zero_for_one && pool_state.is_decay_fee_on_sell_mint0() {
+                decay_trade_fee_rate = pool_state.get_decay_fee_rate(block_timestamp as u64);
+
+                #[cfg(feature = "enable-log")]
+                msg!(
+                    "enable decay trade fee on sell mint0, decay_trade_fee_rate:{}",
+                    decay_trade_fee_rate
+                );
+
+                // Disable decay fee if it is not needed
+                if decay_trade_fee_rate <= real_trade_fee_rate {
+                    pool_state.disable_decay_fee()?;
+                }
+            } else if !zero_for_one && pool_state.is_decay_fee_on_sell_mint1() {
+                decay_trade_fee_rate = pool_state.get_decay_fee_rate(block_timestamp as u64);
+
+                #[cfg(feature = "enable-log")]
+                msg!(
+                    "enable decay fee on sell mint1, decay_trade_fee_rate:{}",
+                    decay_trade_fee_rate
+                );
+
+                // Disable decay fee if it is not needed
+                if decay_trade_fee_rate <= real_trade_fee_rate {
+                    pool_state.disable_decay_fee()?;
+                }
+            }
+
+            if decay_trade_fee_rate > real_trade_fee_rate {
+                real_trade_fee_rate = decay_trade_fee_rate;
+            }
+        }
         #[cfg(feature = "enable-log")]
         msg!(
             "sqrt_price_current_x64:{}, sqrt_price_target:{}, liquidity:{}, amount_remaining:{}",
@@ -302,7 +342,7 @@ pub fn swap_internal<'b, 'info>(
             target_price,
             state.liquidity,
             state.amount_specified_remaining,
-            amm_config.trade_fee_rate,
+            real_trade_fee_rate,
             is_base_input,
             zero_for_one,
             block_timestamp,
@@ -411,7 +451,7 @@ pub fn swap_internal<'b, 'info>(
                 tick_array_current.update_tick_state(
                     next_initialized_tick.tick,
                     pool_state.tick_spacing.into(),
-                    *next_initialized_tick,
+                    &next_initialized_tick,
                 )?;
 
                 if zero_for_one {
@@ -587,7 +627,7 @@ pub fn exact_internal<'b, 'c: 'info, 'info>(
 
         let mut tickarray_bitmap_extension = None;
         let tick_array_states = &mut VecDeque::new();
-        tick_array_states.push_back(ctx.tick_array_state.load_mut()?);
+        tick_array_states.push_back(ctx.tick_array_state.get_ref_mut()?);
 
         let tick_array_bitmap_extension_key = TickArrayBitmapExtension::key(pool_state.key());
         for account_info in remaining_accounts.into_iter() {
@@ -599,7 +639,7 @@ pub fn exact_internal<'b, 'c: 'info, 'info>(
                 );
                 continue;
             }
-            tick_array_states.push_back(AccountLoad::load_data_mut(account_info)?);
+            tick_array_states.push_back(TickArrayContainer::load_data_mut(account_info)?);
         }
 
         (amount_0, amount_1) = swap_internal(
@@ -760,6 +800,15 @@ pub fn swap<'a, 'b, 'c: 'info, 'info>(
     sqrt_price_limit_x64: u128,
     is_base_input: bool,
 ) -> Result<()> {
+    // check tick array account is owned by the pool
+    require_keys_eq!(*ctx.accounts.tick_array.owner, crate::id());
+    let tick_array_container =
+        TickArrayContainer::try_from_without_check(&ctx.accounts.tick_array.to_account_info())?;
+    require_keys_eq!(
+        tick_array_container.get_pool_id()?,
+        ctx.accounts.pool_state.key()
+    );
+
     let amount = exact_internal(
         &mut SwapAccounts {
             signer: ctx.accounts.payer.clone(),
@@ -770,7 +819,7 @@ pub fn swap<'a, 'b, 'c: 'info, 'info>(
             output_vault: ctx.accounts.output_vault.clone(),
             token_program: ctx.accounts.token_program.clone(),
             pool_state: &mut ctx.accounts.pool_state,
-            tick_array_state: &mut ctx.accounts.tick_array,
+            tick_array_state: &tick_array_container,
             observation_state: &mut ctx.accounts.observation_state,
         },
         ctx.remaining_accounts,
@@ -801,21 +850,73 @@ mod swap_test {
     };
 
     use super::*;
+    use crate::states::dyn_tick_array_test::{
+        build_dyn_tick_array_with_tick_states, DynTickArrayInfo, DynamicTickArrayBuildType,
+    };
     use crate::states::pool_test::build_pool;
     use crate::states::tick_array_test::{
-        build_tick, build_tick_array_with_tick_states, TickArrayInfo,
+        build_fix_tick_array_with_tick_states, build_tick, FixTickArrayInfo,
     };
     use std::cell::RefCell;
     use std::collections::HashMap;
     use std::vec;
 
+    pub enum SwapTickBuildType {
+        Fix,
+        Dynamic(DynamicTickArrayBuildType),
+    }
+
+    pub enum MixTickArrayInfo {
+        Fix(FixTickArrayInfo),
+        Dynamic(DynTickArrayInfo),
+    }
+
+    pub enum MixTickArrayStateRefCell {
+        Fix(RefCell<TickArrayState>),
+        Dynamic(RefCell<DynTickArrayState>, RefCell<Vec<TickState>>),
+    }
+
+    impl MixTickArrayStateRefCell {
+        pub fn get_mut(&self) -> TickArrayContainerRefMut<'_> {
+            match self {
+                MixTickArrayStateRefCell::Fix(data) => {
+                    TickArrayContainerRefMut::Fixed(data.borrow_mut())
+                }
+                MixTickArrayStateRefCell::Dynamic(data, ticks) => {
+                    TickArrayContainerRefMut::Dynamic((
+                        data.borrow_mut(),
+                        std::cell::RefMut::map(ticks.borrow_mut(), |v| v.as_mut_slice()),
+                    ))
+                }
+            }
+        }
+
+        pub fn get_start_tick_index(&self) -> i32 {
+            match self {
+                MixTickArrayStateRefCell::Fix(data) => data.borrow().start_tick_index,
+                MixTickArrayStateRefCell::Dynamic(data, _) => data.borrow().start_tick_index,
+            }
+        }
+    }
+
+    /// fix tick array
     pub fn get_tick_array_states_mut(
-        deque_tick_array_states: &VecDeque<RefCell<TickArrayState>>,
-    ) -> RefCell<VecDeque<RefMut<TickArrayState>>> {
+        deque_tick_array_states: &'_ VecDeque<MixTickArrayStateRefCell>,
+    ) -> RefCell<VecDeque<TickArrayContainerRefMut<'_>>> {
         let mut tick_array_states = VecDeque::new();
 
         for tick_array_state in deque_tick_array_states {
-            tick_array_states.push_back(tick_array_state.borrow_mut());
+            match tick_array_state {
+                MixTickArrayStateRefCell::Fix(data) => {
+                    tick_array_states.push_back(TickArrayContainerRefMut::Fixed(data.borrow_mut()));
+                }
+                MixTickArrayStateRefCell::Dynamic(data, ticks) => {
+                    tick_array_states.push_back(TickArrayContainerRefMut::Dynamic((
+                        data.borrow_mut(),
+                        std::cell::RefMut::map(ticks.borrow_mut(), |v| v.as_mut_slice()),
+                    )));
+                }
+            }
         }
         RefCell::new(tick_array_states)
     }
@@ -825,11 +926,11 @@ mod swap_test {
         tick_spacing: u16,
         sqrt_price_x64: u128,
         liquidity: u128,
-        tick_array_infos: Vec<TickArrayInfo>,
+        mix_tick_array_infos: Vec<MixTickArrayInfo>,
     ) -> (
         AmmConfig,
         RefCell<PoolState>,
-        VecDeque<RefCell<TickArrayState>>,
+        VecDeque<MixTickArrayStateRefCell>,
         RefCell<ObservationState>,
     ) {
         let amm_config = AmmConfig {
@@ -842,21 +943,52 @@ mod swap_test {
         let observation_state = RefCell::new(ObservationState::default());
         observation_state.borrow_mut().pool_id = pool_state.borrow().key();
 
-        let mut tick_array_states: VecDeque<RefCell<TickArrayState>> = VecDeque::new();
-        for tick_array_info in tick_array_infos {
-            tick_array_states.push_back(build_tick_array_with_tick_states(
-                pool_state.borrow().key(),
-                tick_array_info.start_tick_index,
-                tick_spacing,
-                tick_array_info.ticks,
-            ));
-            pool_state
-                .borrow_mut()
-                .flip_tick_array_bit(None, tick_array_info.start_tick_index)
-                .unwrap();
+        let mut mix_tick_array_states: VecDeque<MixTickArrayStateRefCell> = VecDeque::new();
+        for tick_array_info in mix_tick_array_infos {
+            match tick_array_info {
+                MixTickArrayInfo::Fix(tick_array_info) => {
+                    let fix_tick_array_states = build_fix_tick_array_with_tick_states(
+                        pool_state.borrow().key(),
+                        tick_array_info.start_tick_index,
+                        tick_spacing,
+                        tick_array_info.ticks,
+                    );
+                    mix_tick_array_states
+                        .push_back(MixTickArrayStateRefCell::Fix(fix_tick_array_states));
+
+                    pool_state
+                        .borrow_mut()
+                        .flip_tick_array_bit(None, tick_array_info.start_tick_index)
+                        .unwrap();
+                }
+
+                MixTickArrayInfo::Dynamic(tick_array_info) => {
+                    let dyn_tick_array_states = build_dyn_tick_array_with_tick_states(
+                        pool_state.borrow().key(),
+                        tick_array_info.start_tick_index,
+                        tick_spacing,
+                        tick_array_info.build_type,
+                        tick_array_info.ticks,
+                    );
+                    mix_tick_array_states.push_back(MixTickArrayStateRefCell::Dynamic(
+                        dyn_tick_array_states.0,
+                        dyn_tick_array_states.1,
+                    ));
+
+                    pool_state
+                        .borrow_mut()
+                        .flip_tick_array_bit(None, tick_array_info.start_tick_index)
+                        .unwrap();
+                }
+            };
         }
 
-        (amm_config, pool_state, tick_array_states, observation_state)
+        (
+            amm_config,
+            pool_state,
+            mix_tick_array_states,
+            observation_state,
+        )
     }
 
     pub struct OpenPositionParam {
@@ -864,7 +996,10 @@ mod swap_test {
         pub amount_1: u64,
         // pub liquidity: u128,
         pub tick_lower: i32,
+        pub lower_tick_build_type: SwapTickBuildType,
+
         pub tick_upper: i32,
+        pub upper_tick_build_type: SwapTickBuildType,
     }
 
     fn setup_swap_test<'info>(
@@ -875,7 +1010,7 @@ mod swap_test {
     ) -> (
         AmmConfig,
         RefCell<PoolState>,
-        VecDeque<RefCell<TickArrayState>>,
+        VecDeque<MixTickArrayStateRefCell>,
         RefCell<ObservationState>,
         TickArrayBitmapExtension,
         u64,
@@ -906,7 +1041,7 @@ mod swap_test {
         )
         .0;
         let bitmap_extension = build_tick_array_bitmap_extension_info(param);
-        let mut tick_array_states: VecDeque<RefCell<TickArrayState>> = VecDeque::new();
+        let mut tick_array_states: VecDeque<MixTickArrayStateRefCell> = VecDeque::new();
         let mut sum_amount_0: u64 = 0;
         let mut sum_amount_1: u64 = 0;
         {
@@ -935,38 +1070,60 @@ mod swap_test {
                 sum_amount_0 += amount_0;
                 sum_amount_1 += amount_1;
                 let tick_array_lower_start_index =
-                    TickArrayState::get_array_start_index(position_param.tick_lower, tick_spacing);
+                    TickUtils::get_array_start_index(position_param.tick_lower, tick_spacing);
 
                 if !tick_array_map.contains_key(&tick_array_lower_start_index) {
-                    let mut tick_array_refcel = build_tick_array_with_tick_states(
-                        pool_state.key(),
-                        tick_array_lower_start_index,
-                        tick_spacing,
-                        vec![],
-                    );
-                    let tick_array_lower = tick_array_refcel.get_mut();
+                    let mut tick_array_refcel = match position_param.lower_tick_build_type {
+                        SwapTickBuildType::Fix => {
+                            let fix_states = build_fix_tick_array_with_tick_states(
+                                pool_state.key(),
+                                tick_array_lower_start_index,
+                                tick_spacing,
+                                vec![],
+                            );
+                            MixTickArrayStateRefCell::Fix(fix_states)
+                        }
+                        SwapTickBuildType::Dynamic(build_type) => {
+                            let dyn_tick_array_refcel = build_dyn_tick_array_with_tick_states(
+                                pool_state.key(),
+                                tick_array_lower_start_index,
+                                tick_spacing,
+                                build_type,
+                                vec![],
+                            );
+                            MixTickArrayStateRefCell::Dynamic(
+                                dyn_tick_array_refcel.0,
+                                dyn_tick_array_refcel.1,
+                            )
+                        }
+                    };
 
-                    let tick_lower = tick_array_lower
-                        .get_tick_state_mut(position_param.tick_lower, tick_spacing)
-                        .unwrap();
-                    tick_lower.tick = position_param.tick_lower;
-                    tick_lower
-                        .update(
-                            pool_state.tick_current,
-                            i128::try_from(liquidity).unwrap(),
-                            0,
-                            0,
-                            false,
-                            &[RewardInfo::default(); 3],
-                        )
-                        .unwrap();
+                    {
+                        let mut tick_array_lower = tick_array_refcel.get_mut();
+
+                        let tick_lower = tick_array_lower
+                            .get_tick_state_mut(position_param.tick_lower, tick_spacing)
+                            .unwrap();
+                        tick_lower.tick = position_param.tick_lower;
+                        tick_lower
+                            .update(
+                                pool_state.tick_current,
+                                i128::try_from(liquidity).unwrap(),
+                                0,
+                                0,
+                                false,
+                                &[RewardInfo::default(); 3],
+                            )
+                            .unwrap();
+                    }
 
                     tick_array_map.insert(tick_array_lower_start_index, tick_array_refcel);
                 } else {
                     let tick_array_lower = tick_array_map
                         .get_mut(&tick_array_lower_start_index)
                         .unwrap();
-                    let mut tick_array_lower_borrow_mut = tick_array_lower.borrow_mut();
+                    let mut tick_array_lower_borrow_mut = tick_array_lower.get_mut();
+
                     let tick_lower = tick_array_lower_borrow_mut
                         .get_tick_state_mut(position_param.tick_lower, tick_spacing)
                         .unwrap();
@@ -982,32 +1139,54 @@ mod swap_test {
                         )
                         .unwrap();
                 }
+
                 let tick_array_upper_start_index =
-                    TickArrayState::get_array_start_index(position_param.tick_upper, tick_spacing);
+                    TickUtils::get_array_start_index(position_param.tick_upper, tick_spacing);
                 if !tick_array_map.contains_key(&tick_array_upper_start_index) {
-                    let mut tick_array_refcel = build_tick_array_with_tick_states(
-                        pool_state.key(),
-                        tick_array_upper_start_index,
-                        tick_spacing,
-                        vec![],
-                    );
-                    let tick_array_upper = tick_array_refcel.get_mut();
+                    let mut tick_array_refcel = match position_param.upper_tick_build_type {
+                        SwapTickBuildType::Fix => {
+                            let fix_states = build_fix_tick_array_with_tick_states(
+                                pool_state.key(),
+                                tick_array_upper_start_index,
+                                tick_spacing,
+                                vec![],
+                            );
+                            MixTickArrayStateRefCell::Fix(fix_states)
+                        }
+                        SwapTickBuildType::Dynamic(build_type) => {
+                            let dyn_tick_array_refcel = build_dyn_tick_array_with_tick_states(
+                                pool_state.key(),
+                                tick_array_upper_start_index,
+                                tick_spacing,
+                                build_type,
+                                vec![],
+                            );
+                            MixTickArrayStateRefCell::Dynamic(
+                                dyn_tick_array_refcel.0,
+                                dyn_tick_array_refcel.1,
+                            )
+                        }
+                    };
 
-                    let tick_upper = tick_array_upper
-                        .get_tick_state_mut(position_param.tick_upper, tick_spacing)
-                        .unwrap();
-                    tick_upper.tick = position_param.tick_upper;
+                    {
+                        let mut tick_array_upper = tick_array_refcel.get_mut();
 
-                    tick_upper
-                        .update(
-                            pool_state.tick_current,
-                            i128::try_from(liquidity).unwrap(),
-                            0,
-                            0,
-                            true,
-                            &[RewardInfo::default(); 3],
-                        )
-                        .unwrap();
+                        let tick_upper = tick_array_upper
+                            .get_tick_state_mut(position_param.tick_upper, tick_spacing)
+                            .unwrap();
+                        tick_upper.tick = position_param.tick_upper;
+
+                        tick_upper
+                            .update(
+                                pool_state.tick_current,
+                                i128::try_from(liquidity).unwrap(),
+                                0,
+                                0,
+                                true,
+                                &[RewardInfo::default(); 3],
+                            )
+                            .unwrap();
+                    }
 
                     tick_array_map.insert(tick_array_upper_start_index, tick_array_refcel);
                 } else {
@@ -1015,7 +1194,7 @@ mod swap_test {
                         .get_mut(&tick_array_upper_start_index)
                         .unwrap();
 
-                    let mut tick_array_upperr_borrow_mut = tick_array_upper.borrow_mut();
+                    let mut tick_array_upperr_borrow_mut = tick_array_upper.get_mut();
                     let tick_upper = tick_array_upperr_borrow_mut
                         .get_tick_state_mut(position_param.tick_upper, tick_spacing)
                         .unwrap();
@@ -1051,13 +1230,11 @@ mod swap_test {
             use std::convert::identity;
             if zero_for_one {
                 tick_array_states.make_contiguous().sort_by(|a, b| {
-                    identity(b.borrow().start_tick_index)
-                        .cmp(&identity(a.borrow().start_tick_index))
+                    identity(b.get_start_tick_index()).cmp(&identity(a.get_start_tick_index()))
                 });
             } else {
                 tick_array_states.make_contiguous().sort_by(|a, b| {
-                    identity(a.borrow().start_tick_index)
-                        .cmp(&identity(b.borrow().start_tick_index))
+                    identity(a.get_start_tick_index()).cmp(&identity(b.get_start_tick_index()))
                 });
             }
         }
@@ -1084,7 +1261,7 @@ mod swap_test {
         use super::*;
 
         #[test]
-        fn zero_for_one_base_input_test() {
+        fn zero_for_one_base_input_fix_test() {
             let mut tick_current = -32395;
             let mut liquidity = 5124165121219;
             let mut sqrt_price_x64 = 3651942632306380802;
@@ -1095,15 +1272,15 @@ mod swap_test {
                     sqrt_price_x64,
                     liquidity,
                     vec![
-                        TickArrayInfo {
+                        MixTickArrayInfo::Fix(FixTickArrayInfo {
                             start_tick_index: -32400,
                             ticks: vec![
                                 build_tick(-32400, 277065331032, -277065331032).take(),
                                 build_tick(-29220, 1330680689, -1330680689).take(),
                                 build_tick(-28860, 6408486554, -6408486554).take(),
                             ],
-                        },
-                        TickArrayInfo {
+                        }),
+                        MixTickArrayInfo::Fix(FixTickArrayInfo {
                             start_tick_index: -36000,
                             ticks: vec![
                                 build_tick(-32460, 1194569667438, 536061033698).take(),
@@ -1111,7 +1288,7 @@ mod swap_test {
                                 build_tick(-32580, 152146472301, 128451145459).take(),
                                 build_tick(-32640, 2625605835354, -1492054447712).take(),
                             ],
-                        },
+                        }),
                     ],
                 );
 
@@ -1200,7 +1377,7 @@ mod swap_test {
         }
 
         #[test]
-        fn zero_for_one_base_output_test() {
+        fn zero_for_one_base_input_dyn_test() {
             let mut tick_current = -32395;
             let mut liquidity = 5124165121219;
             let mut sqrt_price_x64 = 3651942632306380802;
@@ -1211,15 +1388,133 @@ mod swap_test {
                     sqrt_price_x64,
                     liquidity,
                     vec![
-                        TickArrayInfo {
+                        MixTickArrayInfo::Dynamic(DynTickArrayInfo {
+                            start_tick_index: -32400,
+                            build_type: DynamicTickArrayBuildType::FromStartIndex,
+                            ticks: vec![
+                                build_tick(-32400, 277065331032, -277065331032).take(),
+                                build_tick(-29220, 1330680689, -1330680689).take(),
+                                build_tick(-28860, 6408486554, -6408486554).take(),
+                            ],
+                        }),
+                        MixTickArrayInfo::Dynamic(DynTickArrayInfo {
+                            start_tick_index: -36000,
+                            build_type: DynamicTickArrayBuildType::FromEndIndex,
+                            ticks: vec![
+                                build_tick(-32460, 1194569667438, 536061033698).take(),
+                                build_tick(-32520, 790917615645, 790917615645).take(),
+                                build_tick(-32580, 152146472301, 128451145459).take(),
+                                build_tick(-32640, 2625605835354, -1492054447712).take(),
+                            ],
+                        }),
+                    ],
+                );
+
+            // just cross the tickarray boundary(-32400), hasn't reached the next tick array initialized tick
+            let (amount_0, amount_1) = swap_internal(
+                &amm_config,
+                &mut pool_state.borrow_mut(),
+                &mut get_tick_array_states_mut(&tick_array_states).borrow_mut(),
+                &mut observation_state.borrow_mut(),
+                &None,
+                12188240002,
+                3049500711113990606,
+                true,
+                true,
+                oracle::block_timestamp_mock() as u32,
+            )
+            .unwrap();
+            println!("amount_0:{},amount_1:{}", amount_0, amount_1);
+            assert!(pool_state.borrow().tick_current < tick_current);
+            assert!(
+                pool_state.borrow().tick_current > -32460
+                    && pool_state.borrow().tick_current < -32400
+            );
+            assert!(pool_state.borrow().sqrt_price_x64 < sqrt_price_x64);
+            assert!(pool_state.borrow().liquidity == (liquidity + 277065331032));
+            assert!(amount_0 == 12188240002);
+
+            tick_current = pool_state.borrow().tick_current;
+            sqrt_price_x64 = pool_state.borrow().sqrt_price_x64;
+            liquidity = pool_state.borrow().liquidity;
+
+            // cross the tickarray boundary(-32400) in last step, now tickarray_current is the tickarray with start_index -36000,
+            // so we pop the tickarray with start_index -32400
+            // in this swap we will cross the tick(-32460), but not reach next tick (-32520)
+            tick_array_states.pop_front();
+            let (amount_0, amount_1) = swap_internal(
+                &amm_config,
+                &mut pool_state.borrow_mut(),
+                &mut get_tick_array_states_mut(&tick_array_states).borrow_mut(),
+                &mut observation_state.borrow_mut(),
+                &None,
+                121882400020,
+                3049500711113990606,
+                true,
+                true,
+                oracle::block_timestamp_mock() as u32,
+            )
+            .unwrap();
+            println!("amount_0:{},amount_1:{}", amount_0, amount_1);
+            assert!(pool_state.borrow().tick_current < tick_current);
+            assert!(
+                pool_state.borrow().tick_current > -32520
+                    && pool_state.borrow().tick_current < -32460
+            );
+            assert!(pool_state.borrow().sqrt_price_x64 < sqrt_price_x64);
+            assert!(pool_state.borrow().liquidity == (liquidity - 536061033698));
+            assert!(amount_0 == 121882400020);
+
+            tick_current = pool_state.borrow().tick_current;
+            sqrt_price_x64 = pool_state.borrow().sqrt_price_x64;
+            liquidity = pool_state.borrow().liquidity;
+
+            // swap in tickarray with start_index -36000, cross the tick -32520
+            let (amount_0, amount_1) = swap_internal(
+                &amm_config,
+                &mut pool_state.borrow_mut(),
+                &mut get_tick_array_states_mut(&tick_array_states).borrow_mut(),
+                &mut observation_state.borrow_mut(),
+                &None,
+                60941200010,
+                3049500711113990606,
+                true,
+                true,
+                oracle::block_timestamp_mock() as u32,
+            )
+            .unwrap();
+            println!("amount_0:{},amount_1:{}", amount_0, amount_1);
+            assert!(pool_state.borrow().tick_current < tick_current);
+            assert!(
+                pool_state.borrow().tick_current > -32580
+                    && pool_state.borrow().tick_current < -32520
+            );
+            assert!(pool_state.borrow().sqrt_price_x64 < sqrt_price_x64);
+            assert!(pool_state.borrow().liquidity == (liquidity - 790917615645));
+            assert!(amount_0 == 60941200010);
+        }
+
+        #[test]
+        fn zero_for_one_base_output_fix_test() {
+            let mut tick_current = -32395;
+            let mut liquidity = 5124165121219;
+            let mut sqrt_price_x64 = 3651942632306380802;
+            let (amm_config, pool_state, mut tick_array_states, observation_state) =
+                build_swap_param(
+                    tick_current,
+                    60,
+                    sqrt_price_x64,
+                    liquidity,
+                    vec![
+                        MixTickArrayInfo::Fix(FixTickArrayInfo {
                             start_tick_index: -32400,
                             ticks: vec![
                                 build_tick(-32400, 277065331032, -277065331032).take(),
                                 build_tick(-29220, 1330680689, -1330680689).take(),
                                 build_tick(-28860, 6408486554, -6408486554).take(),
                             ],
-                        },
-                        TickArrayInfo {
+                        }),
+                        MixTickArrayInfo::Fix(FixTickArrayInfo {
                             start_tick_index: -36000,
                             ticks: vec![
                                 build_tick(-32460, 1194569667438, 536061033698).take(),
@@ -1227,7 +1522,124 @@ mod swap_test {
                                 build_tick(-32580, 152146472301, 128451145459).take(),
                                 build_tick(-32640, 2625605835354, -1492054447712).take(),
                             ],
-                        },
+                        }),
+                    ],
+                );
+
+            // just cross the tickarray boundary(-32400), hasn't reached the next tick array initialized tick
+            let (amount_0, amount_1) = swap_internal(
+                &amm_config,
+                &mut pool_state.borrow_mut(),
+                &mut get_tick_array_states_mut(&tick_array_states).borrow_mut(),
+                &mut observation_state.borrow_mut(),
+                &None,
+                477470480,
+                3049500711113990606,
+                true,
+                false,
+                oracle::block_timestamp_mock() as u32,
+            )
+            .unwrap();
+            println!("amount_0:{},amount_1:{}", amount_0, amount_1);
+            assert!(pool_state.borrow().tick_current < tick_current);
+            assert!(
+                pool_state.borrow().tick_current > -32460
+                    && pool_state.borrow().tick_current < -32400
+            );
+            assert!(pool_state.borrow().sqrt_price_x64 < sqrt_price_x64);
+            assert!(pool_state.borrow().liquidity == (liquidity + 277065331032));
+            assert!(amount_1 == 477470480);
+
+            tick_current = pool_state.borrow().tick_current;
+            sqrt_price_x64 = pool_state.borrow().sqrt_price_x64;
+            liquidity = pool_state.borrow().liquidity;
+
+            // cross the tickarray boundary(-32400) in last step, now tickarray_current is the tickarray with start_index -36000,
+            // so we pop the tickarray with start_index -32400
+            // in this swap we will cross the tick(-32460), but not reach next tick (-32520)
+            tick_array_states.pop_front();
+            let (amount_0, amount_1) = swap_internal(
+                &amm_config,
+                &mut pool_state.borrow_mut(),
+                &mut get_tick_array_states_mut(&tick_array_states).borrow_mut(),
+                &mut observation_state.borrow_mut(),
+                &None,
+                4751002622,
+                3049500711113990606,
+                true,
+                false,
+                oracle::block_timestamp_mock() as u32,
+            )
+            .unwrap();
+            println!("amount_0:{},amount_1:{}", amount_0, amount_1);
+            assert!(pool_state.borrow().tick_current < tick_current);
+            assert!(
+                pool_state.borrow().tick_current > -32520
+                    && pool_state.borrow().tick_current < -32460
+            );
+            assert!(pool_state.borrow().sqrt_price_x64 < sqrt_price_x64);
+            assert!(pool_state.borrow().liquidity == (liquidity - 536061033698));
+            assert!(amount_1 == 4751002622);
+
+            tick_current = pool_state.borrow().tick_current;
+            sqrt_price_x64 = pool_state.borrow().sqrt_price_x64;
+            liquidity = pool_state.borrow().liquidity;
+
+            // swap in tickarray with start_index -36000
+            let (amount_0, amount_1) = swap_internal(
+                &amm_config,
+                &mut pool_state.borrow_mut(),
+                &mut get_tick_array_states_mut(&tick_array_states).borrow_mut(),
+                &mut observation_state.borrow_mut(),
+                &None,
+                2358130642,
+                3049500711113990606,
+                true,
+                false,
+                oracle::block_timestamp_mock() as u32,
+            )
+            .unwrap();
+            println!("amount_0:{},amount_1:{}", amount_0, amount_1);
+            assert!(pool_state.borrow().tick_current < tick_current);
+            assert!(
+                pool_state.borrow().tick_current > -32580
+                    && pool_state.borrow().tick_current < -32520
+            );
+            assert!(pool_state.borrow().sqrt_price_x64 < sqrt_price_x64);
+            assert!(pool_state.borrow().liquidity == (liquidity - 790917615645));
+            assert!(amount_1 == 2358130642);
+        }
+
+        #[test]
+        fn zero_for_one_base_output_mix_test() {
+            let mut tick_current = -32395;
+            let mut liquidity = 5124165121219;
+            let mut sqrt_price_x64 = 3651942632306380802;
+            let (amm_config, pool_state, mut tick_array_states, observation_state) =
+                build_swap_param(
+                    tick_current,
+                    60,
+                    sqrt_price_x64,
+                    liquidity,
+                    vec![
+                        MixTickArrayInfo::Fix(FixTickArrayInfo {
+                            start_tick_index: -32400,
+                            ticks: vec![
+                                build_tick(-32400, 277065331032, -277065331032).take(),
+                                build_tick(-29220, 1330680689, -1330680689).take(),
+                                build_tick(-28860, 6408486554, -6408486554).take(),
+                            ],
+                        }),
+                        MixTickArrayInfo::Dynamic(DynTickArrayInfo {
+                            start_tick_index: -36000,
+                            build_type: DynamicTickArrayBuildType::RandomIndex,
+                            ticks: vec![
+                                build_tick(-32460, 1194569667438, 536061033698).take(),
+                                build_tick(-32520, 790917615645, 790917615645).take(),
+                                build_tick(-32580, 152146472301, 128451145459).take(),
+                                build_tick(-32640, 2625605835354, -1492054447712).take(),
+                            ],
+                        }),
                     ],
                 );
 
@@ -1327,7 +1739,7 @@ mod swap_test {
                     sqrt_price_x64,
                     liquidity,
                     vec![
-                        TickArrayInfo {
+                        MixTickArrayInfo::Fix(FixTickArrayInfo {
                             start_tick_index: -36000,
                             ticks: vec![
                                 build_tick(-32460, 1194569667438, 536061033698).take(),
@@ -1335,15 +1747,15 @@ mod swap_test {
                                 build_tick(-32580, 152146472301, 128451145459).take(),
                                 build_tick(-32640, 2625605835354, -1492054447712).take(),
                             ],
-                        },
-                        TickArrayInfo {
+                        }),
+                        MixTickArrayInfo::Fix(FixTickArrayInfo {
                             start_tick_index: -32400,
                             ticks: vec![
                                 build_tick(-32400, 277065331032, -277065331032).take(),
                                 build_tick(-29220, 1330680689, -1330680689).take(),
                                 build_tick(-28860, 6408486554, -6408486554).take(),
                             ],
-                        },
+                        }),
                     ],
                 );
 
@@ -1443,7 +1855,7 @@ mod swap_test {
                     sqrt_price_x64,
                     liquidity,
                     vec![
-                        TickArrayInfo {
+                        MixTickArrayInfo::Fix(FixTickArrayInfo {
                             start_tick_index: -36000,
                             ticks: vec![
                                 build_tick(-32460, 1194569667438, 536061033698).take(),
@@ -1451,15 +1863,15 @@ mod swap_test {
                                 build_tick(-32580, 152146472301, 128451145459).take(),
                                 build_tick(-32640, 2625605835354, -1492054447712).take(),
                             ],
-                        },
-                        TickArrayInfo {
+                        }),
+                        MixTickArrayInfo::Fix(FixTickArrayInfo {
                             start_tick_index: -32400,
                             ticks: vec![
                                 build_tick(-32400, 277065331032, -277065331032).take(),
                                 build_tick(-29220, 1330680689, -1330680689).take(),
                                 build_tick(-28860, 6408486554, -6408486554).take(),
                             ],
-                        },
+                        }),
                     ],
                 );
 
@@ -1553,7 +1965,7 @@ mod swap_test {
         use super::*;
 
         #[test]
-        fn zero_for_one_current_tick_array_not_initialized_test() {
+        fn zero_for_one_current_tick_array_not_initialized_fix_test() {
             let tick_current = -28776;
             let liquidity = 624165121219;
             let sqrt_price_x64 = tick_math::get_sqrt_price_at_tick(tick_current).unwrap();
@@ -1562,14 +1974,60 @@ mod swap_test {
                 60,
                 sqrt_price_x64,
                 liquidity,
-                vec![TickArrayInfo {
+                vec![MixTickArrayInfo::Fix(FixTickArrayInfo {
                     start_tick_index: -32400,
                     ticks: vec![
                         build_tick(-32400, 277065331032, -277065331032).take(),
                         build_tick(-29220, 1330680689, -1330680689).take(),
                         build_tick(-28860, 6408486554, -6408486554).take(),
                     ],
-                }],
+                })],
+            );
+
+            // find the first initialzied tick(-28860) and cross it in tickarray
+            let (amount_0, amount_1) = swap_internal(
+                &amm_config,
+                &mut pool_state.borrow_mut(),
+                &mut get_tick_array_states_mut(&tick_array_states).borrow_mut(),
+                &mut observation_state.borrow_mut(),
+                &None,
+                12188240002,
+                tick_math::get_sqrt_price_at_tick(-32400).unwrap(),
+                true,
+                true,
+                oracle::block_timestamp_mock() as u32,
+            )
+            .unwrap();
+            println!("amount_0:{},amount_1:{}", amount_0, amount_1);
+            assert!(pool_state.borrow().tick_current < tick_current);
+            assert!(
+                pool_state.borrow().tick_current > -29220
+                    && pool_state.borrow().tick_current < -28860
+            );
+            assert!(pool_state.borrow().sqrt_price_x64 < sqrt_price_x64);
+            assert!(pool_state.borrow().liquidity == (liquidity + 6408486554));
+            assert!(amount_0 == 12188240002);
+        }
+
+        #[test]
+        fn zero_for_one_current_tick_array_not_initialized_dyn_test() {
+            let tick_current = -28776;
+            let liquidity = 624165121219;
+            let sqrt_price_x64 = tick_math::get_sqrt_price_at_tick(tick_current).unwrap();
+            let (amm_config, pool_state, tick_array_states, observation_state) = build_swap_param(
+                tick_current,
+                60,
+                sqrt_price_x64,
+                liquidity,
+                vec![MixTickArrayInfo::Dynamic(DynTickArrayInfo {
+                    start_tick_index: -32400,
+                    build_type: DynamicTickArrayBuildType::FromStartIndex,
+                    ticks: vec![
+                        build_tick(-32400, 277065331032, -277065331032).take(),
+                        build_tick(-29220, 1330680689, -1330680689).take(),
+                        build_tick(-28860, 6408486554, -6408486554).take(),
+                    ],
+                })],
             );
 
             // find the first initialzied tick(-28860) and cross it in tickarray
@@ -1607,14 +2065,14 @@ mod swap_test {
                 60,
                 sqrt_price_x64,
                 liquidity,
-                vec![TickArrayInfo {
+                vec![MixTickArrayInfo::Fix(FixTickArrayInfo {
                     start_tick_index: -32400,
                     ticks: vec![
                         build_tick(-32400, 277065331032, -277065331032).take(),
                         build_tick(-29220, 1330680689, -1330680689).take(),
                         build_tick(-28860, 6408486554, -6408486554).take(),
                     ],
-                }],
+                })],
             );
 
             // find the first initialzied tick(-32400) and cross it in tickarray
@@ -1657,10 +2115,10 @@ mod swap_test {
                 60,
                 sqrt_price_x64,
                 liquidity,
-                vec![TickArrayInfo {
+                vec![MixTickArrayInfo::Fix(FixTickArrayInfo {
                     start_tick_index: -32400,
                     ticks: vec![build_tick(-28860, 6408486554, -6408486554).take()],
-                }],
+                })],
             );
 
             let result = swap_internal(
@@ -1693,14 +2151,14 @@ mod swap_test {
             60,
             sqrt_price_x64,
             liquidity,
-            vec![TickArrayInfo {
+            vec![MixTickArrayInfo::Fix(FixTickArrayInfo {
                 start_tick_index: -32400,
                 ticks: vec![
                     build_tick(-32400, 277065331032, -277065331032).take(),
                     build_tick(-29220, 1330680689, -1330680689).take(),
                     build_tick(-28860, 6408486554, -6408486554).take(),
                 ],
-            }],
+            })],
         );
 
         // not cross tick(-28860), but pool.tick_current = -28860
@@ -1790,18 +2248,18 @@ mod swap_test {
                 sqrt_price_x64,
                 liquidity,
                 vec![
-                    TickArrayInfo {
+                    MixTickArrayInfo::Fix(FixTickArrayInfo {
                         start_tick_index: -32400,
                         ticks: vec![
                             build_tick(-32400, 277065331032, -277065331032).take(),
                             build_tick(-29220, 1330680689, -1330680689).take(),
                             build_tick(-28860, 6408486554, -6408486554).take(),
                         ],
-                    },
-                    TickArrayInfo {
+                    }),
+                    MixTickArrayInfo::Fix(FixTickArrayInfo {
                         start_tick_index: -28800,
                         ticks: vec![build_tick(-28800, 3726362727, -3726362727).take()],
-                    },
+                    }),
                 ],
             );
 
@@ -1879,6 +2337,72 @@ mod swap_test {
                     && pool_state.borrow().tick_current <= -28800
             );
         }
+
+        #[test]
+        fn zero_for_one_swap_cross_60_tick_in_one_array() {
+            let tick_current = 3;
+            let liquidity = 3726362727 + 600 * 3;
+            let sqrt_price_x64 = tick_math::get_sqrt_price_at_tick(tick_current).unwrap();
+
+            let barrier_tick = -28800;
+            let tick_spacing = 10i32;
+
+            // build ticks from -60*tick_spacing to -1*tick_spacing
+            let mut ticks_neg60 = vec![];
+            for i in 1..61 {
+                ticks_neg60.push(build_tick(-i * tick_spacing, 10, 10).take());
+            }
+            let mut ticks_neg120 = vec![];
+            for i in 61..121 {
+                ticks_neg120.push(build_tick(-i * tick_spacing, 10, 10).take());
+            }
+
+            let (amm_config, pool_state, tick_array_states, observation_state) = build_swap_param(
+                tick_current,
+                tick_spacing as u16,
+                sqrt_price_x64,
+                liquidity,
+                vec![
+                    // 被穿过的tick
+                    MixTickArrayInfo::Dynamic(DynTickArrayInfo {
+                        start_tick_index: -60 * tick_spacing,
+                        build_type: DynamicTickArrayBuildType::FromStartIndex,
+                        ticks: ticks_neg60,
+                    }),
+                    MixTickArrayInfo::Fix(FixTickArrayInfo {
+                        start_tick_index: -120 * tick_spacing,
+                        ticks: ticks_neg120,
+                    }),
+                    // 防护性 tick
+                    MixTickArrayInfo::Fix(FixTickArrayInfo {
+                        start_tick_index: barrier_tick,
+                        ticks: vec![build_tick(barrier_tick, 3726362727, 3726362727).take()],
+                    }),
+                ],
+            );
+
+            // 交易的量，足够穿越设置的tick, 但是🈶不能穿越 防护tick
+            let amount_specified = 1000000;
+
+            // zero for one, just cross tick(-28860),  pool.tick_current = -28861 and pool.sqrt_price_x64 = tick_math::get_sqrt_price_at_tick(-28860)
+            let (amount_0, amount_1) = swap_internal(
+                &amm_config,
+                &mut pool_state.borrow_mut(),
+                &mut get_tick_array_states_mut(&tick_array_states).borrow_mut(),
+                &mut observation_state.borrow_mut(),
+                &None,
+                amount_specified,
+                tick_math::get_sqrt_price_at_tick(barrier_tick).unwrap(),
+                true,
+                true,
+                oracle::block_timestamp_mock() as u32,
+            )
+            .unwrap();
+
+            println!("amount_0:{},amount_1:{}", amount_0, amount_1);
+            assert!(pool_state.borrow().tick_current < tick_current);
+            assert!(pool_state.borrow().tick_current >= barrier_tick);
+        }
     }
 
     #[cfg(test)]
@@ -1910,7 +2434,9 @@ mod swap_test {
                     amount_0: amount_0,
                     amount_1: amount_1,
                     tick_lower: tick_lower,
+                    lower_tick_build_type: SwapTickBuildType::Fix,
                     tick_upper: tick_upper,
+                    upper_tick_build_type: SwapTickBuildType::Fix,
                 }],
                 zero_for_one,
             );
@@ -1965,6 +2491,8 @@ mod swap_test {
                     amount_1: amount_1,
                     tick_lower: tick_lower,
                     tick_upper: tick_upper,
+                    lower_tick_build_type: SwapTickBuildType::Fix,
+                    upper_tick_build_type: SwapTickBuildType::Fix,
                 }],
                 zero_for_one,
             );
@@ -2019,6 +2547,8 @@ mod swap_test {
                     amount_1: amount_1,
                     tick_lower: tick_lower,
                     tick_upper: tick_upper,
+                    lower_tick_build_type: SwapTickBuildType::Fix,
+                    upper_tick_build_type: SwapTickBuildType::Fix,
                 }],
                 zero_for_one,
             );
@@ -2072,6 +2602,8 @@ mod swap_test {
                     amount_1: amount_1,
                     tick_lower: tick_lower,
                     tick_upper: tick_upper,
+                    lower_tick_build_type: SwapTickBuildType::Fix,
+                    upper_tick_build_type: SwapTickBuildType::Fix,
                 }],
                 zero_for_one,
             );
@@ -2099,6 +2631,7 @@ mod swap_test {
             println!("price: {}", sqrt_price * sqrt_price);
         }
     }
+
     #[cfg(test)]
     mod sqrt_price_limit_optimization_max_specified_test {
         use super::*;
@@ -2129,6 +2662,8 @@ mod swap_test {
                     amount_1: amount_1,
                     tick_lower: tick_lower,
                     tick_upper: tick_upper,
+                    lower_tick_build_type: SwapTickBuildType::Fix,
+                    upper_tick_build_type: SwapTickBuildType::Fix,
                 }],
                 zero_for_one,
             );
@@ -2183,6 +2718,8 @@ mod swap_test {
                     amount_1: amount_1,
                     tick_lower: tick_lower,
                     tick_upper: tick_upper,
+                    lower_tick_build_type: SwapTickBuildType::Fix,
+                    upper_tick_build_type: SwapTickBuildType::Fix,
                 }],
                 zero_for_one,
             );
@@ -2237,6 +2774,8 @@ mod swap_test {
                     amount_1: amount_1,
                     tick_lower: tick_lower,
                     tick_upper: tick_upper,
+                    lower_tick_build_type: SwapTickBuildType::Fix,
+                    upper_tick_build_type: SwapTickBuildType::Fix,
                 }],
                 zero_for_one,
             );
@@ -2290,6 +2829,8 @@ mod swap_test {
                     amount_1: amount_1,
                     tick_lower: tick_lower,
                     tick_upper: tick_upper,
+                    lower_tick_build_type: SwapTickBuildType::Fix,
+                    upper_tick_build_type: SwapTickBuildType::Fix,
                 }],
                 zero_for_one,
             );
@@ -2344,7 +2885,14 @@ mod swap_test {
                     let (amm_config, pool_state, tick_array_states, observation_state,bitmap_extension_state,  sum_amount_0, sum_amount_1) = setup_swap_test(
                         tick_current,
                         tick_spacing as u16,
-                        vec![OpenPositionParam{amount_0:amount_0,amount_1:amount_1, tick_lower:tick_lower, tick_upper:tick_upper}],
+                        vec![OpenPositionParam{
+                            amount_0:amount_0,
+                            amount_1:amount_1,
+                            tick_lower:tick_lower,
+                            tick_upper:tick_upper,
+                            lower_tick_build_type: SwapTickBuildType::Fix,
+                            upper_tick_build_type: SwapTickBuildType::Fix,
+                        }],
                         zero_for_one
                         );
 
@@ -2371,7 +2919,16 @@ mod swap_test {
                         let (amm_config, pool_state, tick_array_states, observation_state,bitmap_extension_state,  _sum_amount_0, _sum_amount_1) = setup_swap_test(
                             tick_current,
                             tick_spacing as u16,
-                            vec![OpenPositionParam{amount_0:amount_0,amount_1:amount_1, tick_lower:tick_lower, tick_upper:tick_upper}],
+                            vec![
+                                OpenPositionParam{
+                                amount_0:amount_0,
+                                amount_1:amount_1,
+                                tick_lower:tick_lower,
+                                tick_upper:tick_upper,
+                                lower_tick_build_type: SwapTickBuildType::Fix,
+                                upper_tick_build_type: SwapTickBuildType::Fix,
+                            }
+                            ],
                             zero_for_one
                         );
                         let result = swap_internal(
@@ -2435,7 +2992,16 @@ mod swap_test {
                     let (amm_config, pool_state, tick_array_states, observation_state,bitmap_extension_state, _sum_amount_0, sum_amount_1) = setup_swap_test(
                         tick_current,
                         tick_spacing as u16,
-                        vec![OpenPositionParam{amount_0:amount_0,amount_1:amount_1, tick_lower:tick_lower, tick_upper:tick_upper}],
+                        vec![
+                            OpenPositionParam{
+                                amount_0:amount_0,
+                                amount_1:amount_1,
+                                tick_lower:tick_lower,
+                                tick_upper:tick_upper,
+                                lower_tick_build_type: SwapTickBuildType::Fix,
+                                upper_tick_build_type: SwapTickBuildType::Fix,
+                            }
+                            ],
                         zero_for_one
                     );
 
@@ -2462,7 +3028,14 @@ mod swap_test {
                         let (amm_config, pool_state, tick_array_states, observation_state,bitmap_extension_state, _sum_amount_0, _sum_amount_1) = setup_swap_test(
                             tick_current,
                             tick_spacing as u16,
-                            vec![OpenPositionParam{amount_0:amount_0,amount_1:amount_1, tick_lower:tick_lower, tick_upper:tick_upper}],
+                            vec![OpenPositionParam{
+                                amount_0:amount_0,
+                                amount_1:amount_1,
+                                tick_lower:tick_lower,
+                                tick_upper:tick_upper,
+                                lower_tick_build_type: SwapTickBuildType::Fix,
+                                upper_tick_build_type: SwapTickBuildType::Fix,
+                            }],
                             zero_for_one
                         );
                         let result = swap_internal(
@@ -2527,7 +3100,14 @@ mod swap_test {
                     let (amm_config, pool_state, tick_array_states, observation_state,bitmap_extension_state,  sum_amount_0, sum_amount_1) = setup_swap_test(
                         tick_current,
                         tick_spacing as u16,
-                        vec![OpenPositionParam{amount_0:amount_0,amount_1:amount_1, tick_lower:tick_lower, tick_upper:tick_upper}],
+                        vec![OpenPositionParam{
+                            amount_0:amount_0,
+                            amount_1:amount_1,
+                            tick_lower:tick_lower,
+                            tick_upper:tick_upper,
+                            lower_tick_build_type: SwapTickBuildType::Fix,
+                            upper_tick_build_type: SwapTickBuildType::Fix,
+                        }],
                         zero_for_one
                     );
 
@@ -2555,7 +3135,14 @@ mod swap_test {
                         let (amm_config, pool_state, tick_array_states, observation_state,bitmap_extension_state,  _sum_amount_0, _sum_amount_1) = setup_swap_test(
                             tick_current,
                             tick_spacing as u16,
-                            vec![OpenPositionParam{amount_0:amount_0,amount_1:amount_1, tick_lower:tick_lower, tick_upper:tick_upper}],
+                            vec![OpenPositionParam{
+                                amount_0:amount_0,
+                                amount_1:amount_1,
+                                tick_lower:tick_lower,
+                                tick_upper:tick_upper,
+                                lower_tick_build_type: SwapTickBuildType::Fix,
+                                upper_tick_build_type: SwapTickBuildType::Fix,
+                            }],
                             zero_for_one
                         );
                         let result = swap_internal(
@@ -2619,7 +3206,14 @@ mod swap_test {
                     let (amm_config, pool_state, tick_array_states, observation_state,bitmap_extension_state,  sum_amount_0, _sum_amount_1) = setup_swap_test(
                         tick_current,
                         tick_spacing as u16,
-                        vec![OpenPositionParam{amount_0:amount_0,amount_1:amount_1, tick_lower:tick_lower, tick_upper:tick_upper}],
+                        vec![OpenPositionParam{
+                            amount_0:amount_0,
+                            amount_1:amount_1,
+                            tick_lower:tick_lower,
+                            tick_upper:tick_upper,
+                            lower_tick_build_type: SwapTickBuildType::Fix,
+                            upper_tick_build_type: SwapTickBuildType::Fix,
+                        }],
                         zero_for_one
                     );
                     prop_assume!(sum_amount_0 > 1);
@@ -2645,7 +3239,14 @@ mod swap_test {
                         let (amm_config, pool_state, tick_array_states, observation_state,bitmap_extension_state,  _sum_amount_0, _sum_amount_1) = setup_swap_test(
                             tick_current,
                             tick_spacing as u16,
-                            vec![OpenPositionParam{amount_0:amount_0,amount_1:amount_1, tick_lower:tick_lower, tick_upper:tick_upper}],
+                            vec![OpenPositionParam{
+                                amount_0:amount_0,
+                                amount_1:amount_1,
+                                tick_lower:tick_lower,
+                                tick_upper:tick_upper,
+                                lower_tick_build_type: SwapTickBuildType::Fix,
+                                upper_tick_build_type: SwapTickBuildType::Fix,
+                            }],
                             zero_for_one
                         );
                         let result = swap_internal(

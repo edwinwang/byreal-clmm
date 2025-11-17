@@ -1,7 +1,7 @@
 ///! Helper functions to get most and least significant non-zero bits
 use super::big_num::U1024;
 use crate::error::ErrorCode;
-use crate::states::tick_array::{TickArrayState, TickState, TICK_ARRAY_SIZE};
+use crate::states::*;
 use anchor_lang::prelude::*;
 
 pub const TICK_ARRAY_BITMAP_SIZE: i32 = 512;
@@ -79,15 +79,15 @@ pub fn next_initialized_tick_array_start_index(
     tick_spacing: u16,
     zero_for_one: bool,
 ) -> (bool, i32) {
-    assert!(TickArrayState::check_is_valid_start_index(
+    assert!(TickUtils::check_is_valid_start_index(
         last_tick_array_start_index,
         tick_spacing
     ));
     let tick_boundary = max_tick_in_tickarray_bitmap(tick_spacing);
     let next_tick_array_start_index = if zero_for_one {
-        last_tick_array_start_index - TickArrayState::tick_count(tick_spacing)
+        last_tick_array_start_index - TickUtils::tick_count(tick_spacing)
     } else {
-        last_tick_array_start_index + TickArrayState::tick_count(tick_spacing)
+        last_tick_array_start_index + TickUtils::tick_count(tick_spacing)
     };
 
     if next_tick_array_start_index < -tick_boundary || next_tick_array_start_index >= tick_boundary
@@ -126,10 +126,7 @@ pub fn next_initialized_tick_array_start_index(
             (true, next_array_start_index)
         } else {
             // not found til to the end
-            (
-                false,
-                tick_boundary - TickArrayState::tick_count(tick_spacing),
-            )
+            (false, tick_boundary - TickUtils::tick_count(tick_spacing))
         }
     }
 }
@@ -139,7 +136,7 @@ mod test {
     use super::*;
     use crate::{
         libraries::{tick_math, MAX_TICK},
-        states::TickArrayState,
+        states::TickUtils,
     };
 
     #[test]
@@ -192,7 +189,7 @@ mod test {
                 break;
             }
             tick_array_start_index =
-                TickArrayState::get_array_start_index(array_start_index, tick_spacing);
+                TickUtils::get_array_start_index(array_start_index, tick_spacing);
         }
     }
     #[test]
@@ -212,7 +209,7 @@ mod test {
                 break;
             }
             tick_array_start_index =
-                TickArrayState::get_array_start_index(array_start_index, tick_spacing);
+                TickUtils::get_array_start_index(array_start_index, tick_spacing);
         }
     }
     #[test]
@@ -232,7 +229,7 @@ mod test {
                 break;
             }
             tick_array_start_index =
-                TickArrayState::get_array_start_index(array_start_index, tick_spacing);
+                TickUtils::get_array_start_index(array_start_index, tick_spacing);
         }
     }
 
@@ -253,7 +250,7 @@ mod test {
                 break;
             }
             tick_array_start_index =
-                TickArrayState::get_array_start_index(array_start_index, tick_spacing);
+                TickUtils::get_array_start_index(array_start_index, tick_spacing);
         }
     }
     #[test]
@@ -273,7 +270,7 @@ mod test {
                 break;
             }
             tick_array_start_index =
-                TickArrayState::get_array_start_index(array_start_index, tick_spacing);
+                TickUtils::get_array_start_index(array_start_index, tick_spacing);
         }
     }
     #[test]
@@ -293,7 +290,7 @@ mod test {
                 break;
             }
             tick_array_start_index =
-                TickArrayState::get_array_start_index(array_start_index, tick_spacing);
+                TickUtils::get_array_start_index(array_start_index, tick_spacing);
         }
     }
 
@@ -388,8 +385,8 @@ mod test {
                 tick_boundary = MAX_TICK;
             }
             let (min, max) = (
-                TickArrayState::get_array_start_index(-tick_boundary, tick_spacing),
-                TickArrayState::get_array_start_index(tick_boundary, tick_spacing),
+                TickUtils::get_array_start_index(-tick_boundary, tick_spacing),
+                TickUtils::get_array_start_index(tick_boundary, tick_spacing),
             );
             let mut start_index = min;
             let mut expect_index;

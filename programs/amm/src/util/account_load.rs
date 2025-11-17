@@ -25,8 +25,7 @@ impl<'info, T: ZeroCopy + Owner> AccountLoad<'info, T> {
     #[inline(never)]
     pub fn try_from(acc_info: &AccountInfo<'info>) -> Result<AccountLoad<'info, T>> {
         if acc_info.owner != &T::owner() {
-            return Err(Error::from(ErrorCode::AccountOwnedByWrongProgram)
-                .with_pubkeys((*acc_info.owner, T::owner())));
+            return Err(Error::from(ErrorCode::AccountOwnedByWrongProgram).with_pubkeys((*acc_info.owner, T::owner())));
         }
         let data: &[u8] = &acc_info.try_borrow_data()?;
         if data.len() < T::DISCRIMINATOR.len() {
@@ -43,20 +42,16 @@ impl<'info, T: ZeroCopy + Owner> AccountLoad<'info, T> {
 
     /// Constructs a new `Loader` from an uninitialized account.
     #[inline(never)]
-    pub fn try_from_unchecked(
-        _program_id: &Pubkey,
-        acc_info: &AccountInfo<'info>,
-    ) -> Result<AccountLoad<'info, T>> {
+    pub fn try_from_unchecked(_program_id: &Pubkey, acc_info: &AccountInfo<'info>) -> Result<AccountLoad<'info, T>> {
         if acc_info.owner != &T::owner() {
-            return Err(Error::from(ErrorCode::AccountOwnedByWrongProgram)
-                .with_pubkeys((*acc_info.owner, T::owner())));
+            return Err(Error::from(ErrorCode::AccountOwnedByWrongProgram).with_pubkeys((*acc_info.owner, T::owner())));
         }
         Ok(AccountLoad::new(acc_info.clone()))
     }
 
     /// Returns a `RefMut` to the account data structure for reading or writing.
     /// Should only be called once, when the account is being initialized.
-    pub fn load_init(&self) -> Result<RefMut<T>> {
+    pub fn load_init<'a>(&'a self) -> Result<RefMut<'a, T>> {
         // AccountInfo api allows you to borrow mut even if the account isn't
         // writable, so add this check for a better dev experience.
         if !self.acc_info.is_writable {
@@ -86,8 +81,7 @@ impl<'info, T: ZeroCopy + Owner> AccountLoad<'info, T> {
     /// So it is necessary to check the owner
     pub fn load_data_mut<'a>(acc_info: &'a AccountInfo) -> Result<RefMut<'a, T>> {
         if acc_info.owner != &T::owner() {
-            return Err(Error::from(ErrorCode::AccountOwnedByWrongProgram)
-                .with_pubkeys((*acc_info.owner, T::owner())));
+            return Err(Error::from(ErrorCode::AccountOwnedByWrongProgram).with_pubkeys((*acc_info.owner, T::owner())));
         }
         if !acc_info.is_writable {
             return Err(ErrorCode::AccountNotMutable.into());
@@ -109,7 +103,7 @@ impl<'info, T: ZeroCopy + Owner> AccountLoad<'info, T> {
     }
 
     /// Returns a Ref to the account data structure for reading.
-    pub fn load(&self) -> Result<Ref<T>> {
+    pub fn load<'a>(&'a self) -> Result<Ref<'a, T>> {
         let data = self.acc_info.try_borrow_data()?;
         if data.len() < T::DISCRIMINATOR.len() {
             return Err(ErrorCode::AccountDiscriminatorNotFound.into());
@@ -126,7 +120,7 @@ impl<'info, T: ZeroCopy + Owner> AccountLoad<'info, T> {
     }
 
     /// Returns a `RefMut` to the account data structure for reading or writing.
-    pub fn load_mut(&self) -> Result<RefMut<T>> {
+    pub fn load_mut<'a>(&'a self) -> Result<RefMut<'a, T>> {
         // AccountInfo api allows you to borrow mut even if the account isn't
         // writable, so add this check for a better dev experience.
         if !self.acc_info.is_writable {

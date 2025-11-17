@@ -1,6 +1,9 @@
 pub mod create_pool;
 pub use create_pool::*;
 
+pub mod create_pool_decay_fee;
+pub use create_pool_decay_fee::*;
+
 pub mod open_position;
 pub use open_position::*;
 

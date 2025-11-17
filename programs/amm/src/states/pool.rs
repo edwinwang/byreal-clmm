@@ -10,6 +10,7 @@ use crate::util::get_recent_epoch;
 use anchor_lang::prelude::*;
 use anchor_lang::solana_program::program_option::COption;
 use anchor_spl::token_interface::Mint;
+
 #[cfg(feature = "enable-log")]
 use std::convert::identity;
 use std::ops::{BitAnd, BitOr, BitXor};
@@ -132,13 +133,24 @@ pub struct PoolState {
     pub fund_fees_token_1: u64,
 
     // The timestamp allowed for swap in the pool.
-    // Note: The open_time is disabled for now.
     pub open_time: u64,
     // account recent update epoch
     pub recent_epoch: u64,
 
+    /// decay fee flag
+    /// bit0, 1: use decay fee, 0: not use decay fee
+    /// bit1, 1: use decay fee on sell for mint0, 0: not use decay fee on sell for mint0
+    /// bit2, 1: use decay fee on sell for mint1, 0: not use decay fee on sell for mint1
+    pub decay_fee_flag: u8,
+    /// The initial decay fee rate for the pool, in percentage.(1=1%)
+    pub decay_fee_init_fee_rate: u8,
+    /// decrease rate for the decay fee, in percentage.(1=1%)
+    pub decay_fee_decrease_rate: u8,
+    /// The interval for decreasing the decay fee, in seconds.
+    pub decay_fee_decrease_interval: u8,
     // Unused bytes for future upgrades.
-    pub padding1: [u64; 24],
+    pub padding1_1: [u8; 4],
+    pub padding1: [u64; 23],
     pub padding2: [u64; 32],
 }
 
@@ -230,11 +242,109 @@ impl PoolState {
         self.fund_fees_token_1 = 0;
         self.open_time = open_time;
         self.recent_epoch = get_recent_epoch()?;
-        self.padding1 = [0; 24];
+        self.decay_fee_flag = 0; // default, don't use dynamic fee
+        self.padding1_1 = [0; 4];
+        self.padding1 = [0; 23];
         self.padding2 = [0; 32];
         self.observation_key = observation_state_key;
 
         Ok(())
+    }
+
+    /// Initialize decay fee parameters
+    pub fn initialize_decay_fee(
+        &mut self,
+        on_sell_mint0: bool,
+        on_sell_mint1: bool,
+        init_rate: u8,
+        decrease_rate: u8,
+        decrease_interval: u8,
+    ) -> Result<()> {
+        // set decay fee flag
+        self.decay_fee_flag = 1;
+
+        if !on_sell_mint0 && !on_sell_mint1 {
+            return err!(ErrorCode::DecayFeeNeitherOnSellMint0NorMint1);
+        } else {
+            if on_sell_mint0 {
+                self.decay_fee_flag |= 1 << 1;
+            }
+            if on_sell_mint1 {
+                self.decay_fee_flag |= 1 << 2;
+            }
+        }
+
+        assert!(init_rate <= 100);
+        self.decay_fee_init_fee_rate = init_rate;
+        assert!(decrease_rate <= 100);
+        self.decay_fee_decrease_rate = decrease_rate;
+        self.decay_fee_decrease_interval = decrease_interval;
+
+        Ok(())
+    }
+
+    /// disable decay fee config
+    pub fn disable_decay_fee(&mut self) -> Result<()> {
+        self.decay_fee_flag &= !(1 << 0);
+        Ok(())
+    }
+
+    /// Check if the pool is using decay fee
+    pub fn is_decay_fee_enabled(&self) -> bool {
+        self.decay_fee_flag & (1 << 0) != 0
+    }
+
+    pub fn is_decay_fee_on_sell_mint0(&self) -> bool {
+        self.decay_fee_flag & (1 << 1) != 0
+    }
+
+    pub fn is_decay_fee_on_sell_mint1(&self) -> bool {
+        self.decay_fee_flag & (1 << 2) != 0
+    }
+
+    /// Get the decay fee rate based on the current time, in hunderedths of a bip (10^-6).
+    pub fn get_decay_fee_rate(&self, current_timestamp: u64) -> u32 {
+        if !self.is_decay_fee_enabled() {
+            return 0u32;
+        }
+
+        // not open yet
+        if current_timestamp < self.open_time {
+            return 0u32;
+        }
+
+        let interval_count =
+            (current_timestamp - self.open_time) / self.decay_fee_decrease_interval as u64;
+
+        let decay_fee_decrease_rate = self.decay_fee_decrease_rate as u64 * 10_000;
+
+        // 10^6
+        let hundredths_of_a_bip = FEE_RATE_DENOMINATOR_VALUE as u64;
+        let mut rate = hundredths_of_a_bip;
+        // use `fast-power` to calculate (1-x)^c
+        // x = decay_fee_decrease_rate / 10^6
+        // c = interval_count
+        {
+            let mut exp = interval_count;
+            let mut base = hundredths_of_a_bip
+                .checked_sub(decay_fee_decrease_rate)
+                .unwrap();
+
+            while exp > 0 {
+                if exp % 2 == 1 {
+                    rate = rate.mul_div_ceil(base, hundredths_of_a_bip).unwrap();
+                }
+                base = base.mul_div_ceil(base, hundredths_of_a_bip).unwrap();
+                exp /= 2;
+            }
+        }
+
+        // because decay_fee_init_fee_rate is in percentage, we need to divide it by 100
+        rate = rate
+            .mul_div_ceil(self.decay_fee_init_fee_rate as u64, 100u64)
+            .unwrap();
+
+        rate as u32
     }
 
     pub fn initialize_reward(
@@ -432,11 +542,11 @@ impl PoolState {
 
     pub fn get_tick_array_offset(&self, tick_array_start_index: i32) -> Result<usize> {
         require!(
-            TickArrayState::check_is_valid_start_index(tick_array_start_index, self.tick_spacing),
+            TickUtils::check_is_valid_start_index(tick_array_start_index, self.tick_spacing),
             ErrorCode::InvalidTickIndex
         );
         let tick_array_offset_in_bitmap = tick_array_start_index
-            / TickArrayState::tick_count(self.tick_spacing)
+            / TickUtils::tick_count(self.tick_spacing)
             + tick_array_bit_map::TICK_ARRAY_BITMAP_SIZE;
         Ok(tick_array_offset_in_bitmap as usize)
     }
@@ -480,7 +590,7 @@ impl PoolState {
                 tickarray_bitmap_extension
                     .unwrap()
                     .check_tick_array_is_initialized(
-                        TickArrayState::get_array_start_index(self.tick_current, self.tick_spacing),
+                        TickUtils::get_array_start_index(self.tick_current, self.tick_spacing),
                         self.tick_spacing,
                     )?
             } else {
@@ -495,7 +605,7 @@ impl PoolState {
         }
         let next_start_index = self.next_initialized_tick_array_start_index(
             tickarray_bitmap_extension,
-            TickArrayState::get_array_start_index(self.tick_current, self.tick_spacing),
+            TickUtils::get_array_start_index(self.tick_current, self.tick_spacing),
             zero_for_one,
         )?;
         require!(
@@ -512,7 +622,7 @@ impl PoolState {
         zero_for_one: bool,
     ) -> Result<Option<i32>> {
         last_tick_array_start_index =
-            TickArrayState::get_array_start_index(last_tick_array_start_index, self.tick_spacing);
+            TickUtils::get_array_start_index(last_tick_array_start_index, self.tick_spacing);
 
         loop {
             let (is_found, start_index) =
@@ -576,7 +686,7 @@ impl PoolState {
             self.tick_array_start_index_range();
         for tick_index in tick_indexs {
             let tick_array_start_index =
-                TickArrayState::get_array_start_index(tick_index, self.tick_spacing);
+                TickUtils::get_array_start_index(tick_index, self.tick_spacing);
             if tick_array_start_index >= max_tick_array_index_boundary
                 || tick_array_start_index < min_tick_array_start_index_boundary
             {
@@ -595,13 +705,13 @@ impl PoolState {
         let mut min_tick_boundary = -max_tick_boundary;
         if max_tick_boundary > tick_math::MAX_TICK {
             max_tick_boundary =
-                TickArrayState::get_array_start_index(tick_math::MAX_TICK, self.tick_spacing);
+                TickUtils::get_array_start_index(tick_math::MAX_TICK, self.tick_spacing);
             // find the next tick array start index
-            max_tick_boundary = max_tick_boundary + TickArrayState::tick_count(self.tick_spacing);
+            max_tick_boundary = max_tick_boundary + TickUtils::tick_count(self.tick_spacing);
         }
         if min_tick_boundary < tick_math::MIN_TICK {
             min_tick_boundary =
-                TickArrayState::get_array_start_index(tick_math::MIN_TICK, self.tick_spacing);
+                TickUtils::get_array_start_index(tick_math::MIN_TICK, self.tick_spacing);
         }
         (min_tick_boundary, max_tick_boundary)
     }
@@ -1682,10 +1792,17 @@ pub mod pool_test {
             let fund_fees_token_1: u64 = 0x1230456789abcdef;
             let pool_open_time: u64 = 0x1203456789abcdef;
             let recent_epoch: u64 = 0x1023456789abcdef;
-            let mut padding1: [u64; 24] = [0u64; 24];
-            let mut padding1_data = [0u8; 8 * 24];
+
+            let decay_fee_flag: u8 = 0x0c;
+            let decay_fee_init_fee_rate: u8 = 0x0d;
+            let decay_fee_decrease_rate: u8 = 0x0e;
+            let decay_fee_decrease_interval: u8 = 0x0f;
+            let padding1_1: [u8; 4] = [0; 4];
+
+            let mut padding1: [u64; 23] = [0u64; 23];
+            let mut padding1_data = [0u8; 8 * 23];
             let mut offset = 0;
-            for i in 0..24 {
+            for i in 0..23 {
                 padding1[i] = u64::MAX - i as u64;
                 padding1_data[offset..offset + 8].copy_from_slice(&padding1[i].to_le_bytes());
                 offset += 8;
@@ -1778,8 +1895,21 @@ pub mod pool_test {
             offset += 8;
             pool_data[offset..offset + 8].copy_from_slice(&recent_epoch.to_le_bytes());
             offset += 8;
-            pool_data[offset..offset + 8 * 24].copy_from_slice(&padding1_data);
-            offset += 8 * 24;
+
+            pool_data[offset..offset + 1].copy_from_slice(&decay_fee_flag.to_le_bytes());
+            offset += 1;
+            pool_data[offset..offset + 1].copy_from_slice(&decay_fee_init_fee_rate.to_le_bytes());
+            offset += 1;
+            pool_data[offset..offset + 1].copy_from_slice(&decay_fee_decrease_rate.to_le_bytes());
+            offset += 1;
+            pool_data[offset..offset + 1]
+                .copy_from_slice(&decay_fee_decrease_interval.to_le_bytes());
+            offset += 1;
+            pool_data[offset..offset + 4].copy_from_slice(&padding1_1);
+            offset += 4;
+
+            pool_data[offset..offset + 8 * 23].copy_from_slice(&padding1_data);
+            offset += 8 * 23;
             pool_data[offset..offset + 8 * 32].copy_from_slice(&padding2_data);
             offset += 8 * 32;
 
@@ -1896,6 +2026,120 @@ pub mod pool_test {
             assert_eq!(unpack_padding1, padding1);
             let unpack_padding2 = unpack_data.padding2;
             assert_eq!(unpack_padding2, padding2);
+        }
+    }
+
+    mod decay_fee_test {
+        use super::*;
+
+        #[test]
+        fn decay_fee_test() {
+            let mut pool_state = PoolState::default();
+
+            // init-rate = 80%
+            // decrease-rate = 10%
+            // interval = 10 seconds
+            // open-time = 0 seconds
+            pool_state
+                .initialize_decay_fee(true, true, 80, 10, 10)
+                .unwrap();
+            {
+                let open_time = pool_state.open_time;
+                assert_eq!(open_time, 0u64);
+            }
+            assert_eq!(pool_state.is_decay_fee_enabled(), true);
+            assert_eq!(pool_state.is_decay_fee_on_sell_mint0(), true);
+            assert_eq!(pool_state.is_decay_fee_on_sell_mint1(), true);
+
+            assert_eq!(pool_state.decay_fee_init_fee_rate, 80);
+            assert_eq!(pool_state.decay_fee_decrease_rate, 10);
+            assert_eq!(pool_state.decay_fee_decrease_interval, 10);
+
+            //c=0, v=800000
+            {
+                let fee_rate = pool_state.get_decay_fee_rate(0);
+                assert_eq!(fee_rate, 800_000); // 80% in hunderedths of a bip (10^-6)
+
+                let fee_rate = pool_state.get_decay_fee_rate(9);
+                assert_eq!(fee_rate, 800_000); // still 80%
+            }
+
+            // c=1, v=720000
+            {
+                let fee_rate = pool_state.get_decay_fee_rate(10);
+                assert_eq!(fee_rate, 720_000); // 72% in hunderedths of a bip (10^-6)
+
+                let fee_rate = pool_state.get_decay_fee_rate(19);
+                assert_eq!(fee_rate, 720_000); // still 72%
+            }
+
+            // c=2, v=648000
+            {
+                let fee_rate = pool_state.get_decay_fee_rate(20);
+                assert_eq!(fee_rate, 648_000); // 64.8% in hunderedths of a bip (10^-6)
+
+                let fee_rate = pool_state.get_decay_fee_rate(29);
+                assert_eq!(fee_rate, 648_000); // still 64.8%
+            }
+
+            // c=3, v=583200
+            {
+                let fee_rate = pool_state.get_decay_fee_rate(30);
+                assert_eq!(fee_rate, 583_200); // 58.32% in hunderedths of a bip (10^-6)
+
+                let fee_rate = pool_state.get_decay_fee_rate(39);
+                assert_eq!(fee_rate, 583_200); // still 58.32%
+            }
+
+            // c=5, v=472392
+            {
+                let fee_rate1 = pool_state.get_decay_fee_rate(50);
+                let fee_rate2 = pool_state.get_decay_fee_rate(59);
+                assert_eq!(fee_rate1, fee_rate2);
+
+                let diff = (fee_rate1 as i64 - 472392).abs() as u64;
+                assert!(diff < 10);
+            }
+
+            // c=10, v=278942
+            {
+                let fee_rate1 = pool_state.get_decay_fee_rate(100);
+                let fee_rate2 = pool_state.get_decay_fee_rate(109);
+                assert_eq!(fee_rate1, fee_rate2);
+
+                let diff = (fee_rate1 as i64 - 278942).abs() as u64;
+                assert!(diff < 10);
+            }
+
+            // c=20, v=97261
+            {
+                let fee_rate1 = pool_state.get_decay_fee_rate(200);
+                let fee_rate2 = pool_state.get_decay_fee_rate(209);
+                assert_eq!(fee_rate1, fee_rate2);
+
+                let diff = (fee_rate1 as i64 - 97261).abs() as u64;
+                assert!(diff < 10);
+            }
+
+            // c=50, v=4123
+            {
+                let fee_rate1 = pool_state.get_decay_fee_rate(500);
+                let fee_rate2 = pool_state.get_decay_fee_rate(509);
+                assert_eq!(fee_rate1, fee_rate2);
+
+                let diff = (fee_rate1 as i64 - 4123).abs() as u64;
+                assert!(diff < 10);
+            }
+
+            // c=100, v=21
+            {
+                let fee_rate1 = pool_state.get_decay_fee_rate(1000);
+                let fee_rate2 = pool_state.get_decay_fee_rate(1009);
+                assert_eq!(fee_rate1, fee_rate2);
+
+                let diff = (fee_rate1 as i64 - 21).abs() as u64;
+                assert!(diff < 10);
+            }
         }
     }
 }
